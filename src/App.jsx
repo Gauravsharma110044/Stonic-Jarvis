@@ -28,6 +28,9 @@ export default function App() {
   const streamRef = useRef(null)
   const audioCtxRef = useRef(null)
   const spokenRef = useRef(new Set())
+  const convoModeRef = useRef(false)
+  const voiceOutputRef = useRef(false)
+  const toggleMicRef = useRef(null)
   const errorTimer = useRef(null)
   const bottomRef = useRef(null)
 
@@ -51,6 +54,8 @@ export default function App() {
   const jarvis = state?.users?.find(u => u.id === 'jarvis')
   const me = state?.users?.find(u => u.id === 'you')
   const voiceOutput = !!state?.settings?.voiceOutput
+  convoModeRef.current = !!state?.settings?.convoMode
+  voiceOutputRef.current = voiceOutput
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }) }, [messages.length, typing, listening])
 
@@ -65,7 +70,12 @@ export default function App() {
     const u = new SpeechSynthesisUtterance(last.text.replace(/[*`#]/g, ''))
     u.rate = 1.02
     u.onstart = () => setSpeaking(true)
-    u.onend = () => setSpeaking(false)
+    u.onend = () => {
+      setSpeaking(false)
+      if (convoModeRef.current && voiceOutputRef.current) {
+        setTimeout(() => toggleMicRef.current?.(), 500)
+      }
+    }
     u.onerror = () => setSpeaking(false)
     window.speechSynthesis.speak(u)
     return () => { /* keep speaking state until onend */ }
@@ -115,7 +125,12 @@ export default function App() {
         }
         setInterim(interimText)
         if (finalText) {
-          setText(t => (t ? t + ' ' : '') + finalText.trim())
+          if (convoModeRef.current) {
+            const t = finalText.trim()
+            if (t) window.jarvis.sendMessage(CHANNEL_ID, t)
+          } else {
+            setText(t => (t ? t + ' ' : '') + finalText.trim())
+          }
           setInterim('')
         }
       }
@@ -129,6 +144,7 @@ export default function App() {
       flashError()
     }
   }, [listening, SR, stopMicTracks])
+  toggleMicRef.current = toggleMic
 
   function flashError() {
     setError(true)

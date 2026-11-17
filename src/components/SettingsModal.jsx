@@ -121,6 +121,17 @@ export default function SettingsModal({ settings, slackStatus, onClose, onSave }
 
         <div className="toggle-row">
           <div>
+            <div style={{ fontWeight: 600 }}>Conversation mode</div>
+            <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>After Jarvis speaks, mic auto-restarts — hands-free voice loop.</div>
+          </div>
+          <label className="toggle">
+            <input type="checkbox" checked={!!form.convoMode} onChange={e => set('convoMode', e.target.checked)} />
+            <span className="slider" />
+          </label>
+        </div>
+
+        <div className="toggle-row">
+          <div>
             <div style={{ fontWeight: 600 }}>Demo activity</div>
             <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>Simulated teammate messages so the workspace feels alive.</div>
           </div>

@@ -34,6 +34,7 @@ function seedState() {
       visionModel: 'nvidia/nemotron-3.5-super-vl-120b-a12b',
       demoActivity: true,
       voiceOutput: false,
+      convoMode: false,
       defaultBrowser: '',
       slackBotToken: '',
       slackAppToken: '',

@@ -4,12 +4,21 @@ const { chromium } = require('playwright')
 let browser = null
 let ctx = null
 let page = null
+let profileDir = null
 
 async function ensure() {
   if (!browser || !browser.isConnected()) {
-    browser = await chromium.launch({ headless: false, args: ['--start-minimized'] })
-    ctx = await browser.newContext({ viewport: { width: 1366, height: 850 }, locale: 'en-US' })
-    page = await ctx.newPage()
+    const { app } = require('electron')
+    const path = require('path')
+    profileDir = path.join(app.getPath('userData'), 'jarvis-browser-profile')
+    ctx = await chromium.launchPersistentContext(profileDir, {
+      headless: false,
+      viewport: { width: 1366, height: 850 },
+      locale: 'en-US',
+      args: ['--start-minimized'],
+    })
+    page = ctx.pages()[0] || await ctx.newPage()
+    browser = ctx.browser()
   }
   if (page.isClosed()) page = await ctx.newPage()
   return page
@@ -96,8 +105,8 @@ module.exports = {
     })
   },
   async close() {
-    try { if (browser) await browser.close() } catch {}
+    try { if (ctx) await ctx.close() } catch {}
     browser = ctx = page = null
-    return 'Browser closed.'
+    return 'Browser closed (session saved — logins persist).'
   },
 }
