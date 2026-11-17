@@ -103,8 +103,9 @@ export default function GlobePanel() {
     refreshMarkers()
     const locTimer = setInterval(refreshMarkers, 5000)
 
-    // drag to rotate
-    let dragging = false, px = 0, py = 0, vx = 0, vy = 0
+    // drag to rotate (offset on top of real-time spin)
+    let dragging = false, px = 0, py = 0
+    const userRot = { y: 0, x: 0 }
     const dom = renderer.domElement
     dom.style.cursor = 'grab'
     const down = e => { dragging = true; px = e.clientX; py = e.clientY; dom.style.cursor = 'grabbing' }
@@ -112,9 +113,8 @@ export default function GlobePanel() {
       if (!dragging) return
       const dx = e.clientX - px, dy = e.clientY - py
       px = e.clientX; py = e.clientY
-      globe.rotation.y += dx * 0.008
-      globe.rotation.x = Math.max(-0.6, Math.min(0.6, globe.rotation.x + dy * 0.005))
-      vx = dx * 0.008; vy = dy * 0.005
+      userRot.y += dx * 0.008
+      userRot.x = Math.max(-0.6, Math.min(0.6, userRot.x + dy * 0.005))
     }
     const up = () => { dragging = false; dom.style.cursor = 'grab' }
     dom.addEventListener('pointerdown', down)
@@ -131,15 +131,19 @@ export default function GlobePanel() {
     const ro = new ResizeObserver(resize)
     ro.observe(el)
 
+    // real-time earth rotation: 360° per 24h UTC, locked to actual time
+    // LON_OFFSET calibrates texture prime-meridian alignment (radians)
+    const LON_OFFSET = 0
+    const earthAngle = () => {
+      const now = new Date()
+      const utcH = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600
+      return utcH * 15 * D2R + LON_OFFSET
+    }
     let raf
     const loop = () => {
       raf = requestAnimationFrame(loop)
-      if (!dragging) {
-        globe.rotation.y += 0.0016 + vx * 0.15 // auto-spin + inertia
-        globe.rotation.x += vy * 0.1
-        vx *= 0.94; vy *= 0.94
-        globe.rotation.x = Math.max(-0.6, Math.min(0.6, globe.rotation.x))
-      }
+      globe.rotation.y = earthAngle() + userRot.y
+      globe.rotation.x = userRot.x
       renderer.render(scene, camera)
     }
     loop()
