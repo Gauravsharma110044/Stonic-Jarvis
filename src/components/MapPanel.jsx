@@ -20,8 +20,9 @@ export default function MapPanel() {
       touchZoom: true,
     }).setView([28.61, 77.21], 5)
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
+      attribution: '© OpenStreetMap',
     }).addTo(map)
 
     mapRef.current = map
