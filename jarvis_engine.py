@@ -90,6 +90,60 @@ async def task(req: TaskReq):
         return {"ok": False, "error": str(e)}
 
 
+# ---------- OpenCV live screen vision (lazy-loaded) ----------
+_cv2 = None
+_mss = None
+_prev_gray = None
+
+def _vision():
+    global _cv2, _mss
+    if _cv2 is None:
+        import cv2, mss as _m
+        _cv2, _mss = cv2, _m
+    return _cv2, _mss
+
+
+class VisionReq(BaseModel):
+    interval_ms: int = 1000
+
+
+@app.post("/vision_frame")
+async def vision_frame():
+    """Capture one screen frame via OpenCV/mss. Returns downscaled JPEG +
+    change score vs previous frame (0-100). Lazy-loads cv2 on first call."""
+    global _prev_gray
+    try:
+        cv2, mss = _vision()
+        import base64, numpy as np
+        with mss.mss() as sct:
+            mon = sct.monitors[1]
+            shot = sct.grab(mon)
+            img = np.array(shot)
+        img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        h, w = img.shape[:2]
+        scale = min(1.0, 960 / max(w, h))
+        small = cv2.resize(img, (int(w * scale), int(h * scale)))
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+        gray = cv2.GaussianBlur(gray, (9, 9), 0)
+        changed = 0.0
+        if _prev_gray is not None and _prev_gray.shape == gray.shape:
+            diff = cv2.absdiff(gray, _prev_gray)
+            changed = round(float(diff.mean()), 2)
+        _prev_gray = gray
+        _, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 70])
+        return {"ok": True, "changed": changed, "w": small.shape[1], "h": small.shape[0],
+                "image": base64.b64encode(buf).decode()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/vision_reset")
+def vision_reset():
+    global _prev_gray
+    _prev_gray = None
+    return {"ok": True}
+
+
 @app.post("/analyze")
 async def analyze(req: ChatReq):
     """Deep analysis endpoint — longer reasoning pass for complex inputs."""

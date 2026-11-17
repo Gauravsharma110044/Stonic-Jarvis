@@ -1031,6 +1031,17 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'screen_watch',
+      description: 'Watch the screen live via OpenCV — captures frames, detects changes, reports what changed (install finished, error popped, window switched). Duration in seconds (max 120).',
+      parameters: { type: 'object', properties: {
+        seconds: { type: 'number', description: 'Watch duration, default 30, max 120' },
+        describe: { type: 'boolean', description: 'Also ask vision AI to describe notable changes' },
+      } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'py_engine',
       description: 'Route a task to the Python intelligence engine (structured JSON output, deep analysis, autonomous planning). Modes: task (plan+result JSON), structured (schema JSON), analyze (deep reasoning), chat (plain reply).',
       parameters: { type: 'object', properties: {
@@ -1809,6 +1820,32 @@ async function execTool(name, args, surface, ctx = {}) {
         if (!t) return `No snippet "${args.key}".`
         if (args.type_it) { await psTypeText(t); return `Typed snippet "${args.key}".` }
         return t
+      }
+      case 'screen_watch': {
+        const py = require('./python.cjs')
+        const secs = Math.min(120, Math.max(5, +args.seconds || 30))
+        const frames = Math.floor(secs)
+        logActivity(`screen watch: ${secs}s`)
+        await py.call('/vision_reset', {})
+        const events = []
+        let lastSig = ''
+        for (let i = 0; i < frames; i++) {
+          const f = await py.call('/vision_frame', {}, 20000)
+          if (!f.ok) return `Vision error: ${f.error}`
+          if (f.changed > 8) {
+            const sig = `${Math.round(f.changed)}@${i}s`
+            if (sig !== lastSig) { events.push({ t: i, changed: f.changed }); lastSig = sig }
+          }
+          await new Promise(r => setTimeout(r, 900))
+        }
+        if (!events.length) return `Watched ${secs}s — screen was static, no significant changes.`
+        let out = `Screen watch (${secs}s): ${events.length} change events at seconds ${events.map(e => e.t).join(', ')}.`
+        if (args.describe && events.length <= 5) {
+          // grab a fresh frame and ask vision model what changed context is
+          const shot = await execTool('screenshot', {}, surface, ctx)
+          out += `\nLatest frame captured for analysis.`
+        }
+        return out
       }
       case 'py_engine': {
         const py = require('./python.cjs')
