@@ -2132,14 +2132,16 @@ const SYS_PROMPT = `You are Jarvis, a personal AI assistant running on the user'
 - Use see_screen when the user refers to what's on their screen ("this error", "this window").
 - Use memory_save to remember facts/preferences; memory_recall to look things up.
 - For web tasks use the browser_* tools: browser_navigate → browser_snapshot → browser_click/browser_type → repeat. The browser is a real visible window the user can watch.
-- Use py_engine for: structured JSON output, deep analysis, or autonomous planning (modes: task/structured/analyze/chat). Prefer it over guessing formats.`
+- Use py_engine for: structured JSON output, deep analysis, or autonomous planning (modes: task/structured/analyze/chat). Prefer it over guessing formats.
+- Reason carefully before complex answers — think step by step internally, then give the direct answer.
+- For math, logic, planning, or multi-constraint problems, reason fully before responding — accuracy over speed.`
 
 async function chatOnce(messages, tools) {
   const { llmBaseUrl, llmApiKey, llmModel } = store.state.settings
   const res = await fetch(`${llmBaseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${llmApiKey}` },
-    body: JSON.stringify({ model: llmModel, messages, tools, tool_choice: 'auto' }),
+    body: JSON.stringify({ model: llmModel, messages, tools, tool_choice: 'auto', max_tokens: 4096 }),
     signal: AbortSignal.timeout(90000),
   })
   if (!res.ok) throw new Error(`LLM HTTP ${res.status}`)
@@ -2165,7 +2167,7 @@ async function agentLoop(text, surface, ctx = {}) {
   const toolErrors = []
   const failCounts = {}
   let resultsHint = ''
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 12; i++) {
     logActivity(`${ctx.agent ? `[${ctx.agent}] ` : ''}thinking… step ${i + 1}/10`)
     const msg = await chatOnce(messages, TOOLS)
     if (!msg) return null
