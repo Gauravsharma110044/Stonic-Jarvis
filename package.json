@@ -50,5 +50,6 @@
       "target": "nsis",
       "icon": "electron/icon.ico"
     }
-  }
+  },
+  "license": "Apache-2.0"
 }
