@@ -945,7 +945,8 @@ function logActivity(text) {
 async function execTool(name, args, surface, ctx = {}) {
   const desktop = true // owner-only surfaces: desktop app + own Slack workspace
   const needDesktop = () => 'This action only works when the user is on their PC (Slack is remote-only for safety).'
-  logActivity(`${name} ${JSON.stringify(args || {}).slice(0, 80)}`)
+  const tag = ctx.agent ? `[${ctx.agent}] ` : ''
+  logActivity(`${tag}${name} ${JSON.stringify(args || {}).slice(0, 80)}`)
   try {
     switch (name) {
       case 'open_app': {
@@ -1326,12 +1327,15 @@ async function execTool(name, args, surface, ctx = {}) {
         }
         const role = ROLES[String(args.agent)]
         if (!role) return `Unknown agent "${args.agent}". Use: researcher, coder, operator, analyst.`
-        const r = await agentLoop(String(args.task), surface, { ...ctx, depth: (ctx.depth || 0) + 1, rolePrompt: role })
+        logActivity(`spawned ${args.agent} agent: ${String(args.task).slice(0, 60)}`)
+        const r = await agentLoop(String(args.task), surface, { ...ctx, depth: (ctx.depth || 0) + 1, rolePrompt: role, agent: args.agent })
+        logActivity(`${args.agent} agent finished`)
         return `[${args.agent} agent result]\n${r || 'no result'}`
       }
       case 'delegate_task': {
         if ((ctx.depth || 0) >= 2) return 'Delegation depth limit reached.'
-        const r = await agentLoop(String(args.task), surface, { depth: (ctx.depth || 0) + 1 })
+        logActivity('delegated sub-task')
+        const r = await agentLoop(String(args.task), surface, { ...ctx, depth: (ctx.depth || 0) + 1, agent: 'delegate' })
         return r || 'Sub-task produced no result.'
       }
       case 'csv_summary': {
@@ -1610,6 +1614,7 @@ async function agentLoop(text, surface, ctx = {}) {
   const failCounts = {}
   let resultsHint = ''
   for (let i = 0; i < 10; i++) {
+    logActivity(`${ctx.agent ? `[${ctx.agent}] ` : ''}thinking… step ${i + 1}/10`)
     const msg = await chatOnce(messages, TOOLS)
     if (!msg) return null
     messages.push(msg)
