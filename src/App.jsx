@@ -7,6 +7,7 @@ import ComposerBar from './components/ComposerBar.jsx'
 import ActivityFeed from './components/ActivityFeed.jsx'
 import SettingsModal from './components/SettingsModal.jsx'
 import { MemoryPanel, PlaceholderPanel } from './components/Panels.jsx'
+import StatsPanel from './components/StatsPanel.jsx'
 import { renderText } from './utils.jsx'
 
 const CHANNEL_ID = 'd-jarvis'
@@ -289,6 +290,7 @@ export default function App() {
             <ActivityFeed />
           </>)}
           {section === 'memory' && <MemoryPanel />}
+          {section === 'stats' && <StatsPanel />}
           {['apps', 'files', 'workspace'].includes(section) && <PlaceholderPanel kind={section} />}
         </main>
       </div>
