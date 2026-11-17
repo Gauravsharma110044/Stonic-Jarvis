@@ -857,6 +857,43 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'computer_use',
+      description: 'Control the PC visually like a human: takes screenshots, decides clicks/typing, executes via mouse+keyboard. Use for GUI tasks in any app ("fill this form", "click that button").',
+      parameters: { type: 'object', properties: {
+        goal: { type: 'string', description: 'What to accomplish on screen' },
+        max_steps: { type: 'number', description: 'Max actions (default 8)' },
+      }, required: ['goal'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'git_cmd',
+      description: 'Run a git command in a repo directory (status, diff, log, commit, branch...).',
+      parameters: { type: 'object', properties: {
+        path: { type: 'string', description: 'Repo path' }, command: { type: 'string' },
+      }, required: ['path', 'command'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'stock_price',
+      description: 'Get current stock/crypto/index price. symbol e.g. AAPL, TSLA, BTC-USD, ^GSPC.',
+      parameters: { type: 'object', properties: { symbol: { type: 'string' } }, required: ['symbol'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'research',
+      description: 'Deep research on a topic: searches web, reads sources, returns a cited summary.',
+      parameters: { type: 'object', properties: { topic: { type: 'string' } }, required: ['topic'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'browser_close',
       description: 'Close Jarvis\'s browser window.',
       parameters: { type: 'object', properties: {} },
@@ -1368,6 +1405,84 @@ async function execTool(name, args, surface, ctx = {}) {
       case 'browser_close': {
         const b = require('./browser.cjs')
         return b.close()
+      }
+      case 'computer_use': {
+        const { desktopCapturer, screen } = require('electron')
+        const disp = screen.getPrimaryDisplay().size
+        const maxSteps = Math.min(12, Math.max(1, +args.max_steps || 8))
+        const vModel = store.state.settings.visionModel || 'nvidia/nemotron-3.5-super-vl-120b-a12b'
+        const { llmBaseUrl, llmApiKey } = store.state.settings
+        const log = []
+        for (let step = 0; step < maxSteps; step++) {
+          const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.min(disp.width, 1600), height: Math.min(disp.height, 1000) } })
+          if (!sources.length) return 'No screen.'
+          const b64 = sources[0].thumbnail.toPNG().toString('base64')
+          const prompt = `You are controlling a Windows PC. Goal: ${args.goal}\nSteps so far: ${log.join(' | ') || 'none'}\nLook at the screenshot and reply with ONLY a JSON object (no markdown):\n{"done":true|false,"thought":"what you see/plan","action":{"type":"click|type|key|scroll|wait|done","x":0.0-1.0,"y":0.0-1.0,"text":"...","key":"...","dir":"up|down"}}\nCoordinates x,y are fractions of screen (0=left/top,1=right/bottom). Use done:true when goal is achieved.`
+          const res = await fetch(`${llmBaseUrl.replace(/\/$/, '')}/chat/completions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${llmApiKey}` },
+            body: JSON.stringify({ model: vModel, messages: [{ role: 'user', content: [
+              { type: 'text', text: prompt },
+              { type: 'image_url', image_url: { url: `data:image/png;base64,${b64}` } },
+            ]}], max_tokens: 400 }),
+            signal: AbortSignal.timeout(60000),
+          })
+          if (!res.ok) return `Vision error HTTP ${res.status}`
+          const d = await res.json()
+          const raw = (d.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim()
+          let act
+          try { act = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)) } catch { return `Vision returned unparseable: ${raw.slice(0, 200)}` }
+          if (act.done || act.action?.type === 'done') return `Done after ${step + 1} steps. ${act.thought || ''}\nTrace: ${log.join(' → ')}`
+          const a = act.action || {}
+          const px = Math.round((a.x ?? 0.5) * disp.width), py = Math.round((a.y ?? 0.5) * disp.height)
+          let r = ''
+          if (a.type === 'click') { r = await execTool('mouse_click', { x: px, y: py }, surface, ctx); cursor.ripple() }
+          else if (a.type === 'type') r = await execTool('type_text', { text: a.text }, surface, ctx)
+          else if (a.type === 'key') r = await execTool('press_key', { key: a.key }, surface, ctx)
+          else if (a.type === 'scroll') r = await execTool('mouse_scroll', { amount: a.dir === 'up' ? -5 : 5 }, surface, ctx)
+          else if (a.type === 'wait') { await new Promise(s => setTimeout(s, 1500)); r = 'waited' }
+          else r = `unknown action ${a.type}`
+          log.push(`${a.type}${a.type === 'click' ? `(${px},${py})` : ''}${a.text ? ` "${String(a.text).slice(0, 30)}"` : ''}`)
+          await new Promise(s => setTimeout(s, 700))
+        }
+        return `Reached max steps (${maxSteps}). Last actions: ${log.join(' → ')}`
+      }
+      case 'git_cmd': {
+        const dir = resolvePath(args.path)
+        const r = await runShell(`git -C "${dir}" ${String(args.command).slice(0, 500)}`, 60000)
+        return (r.output || r.error || '(no output)').slice(0, 4000)
+      }
+      case 'stock_price': {
+        const sym = String(args.symbol).trim()
+        const stooqSym = sym.includes('-') ? sym.toLowerCase().replace('-usd', '.usd') : sym.toLowerCase() + '.us'
+        const r = await fetch(`https://stooq.com/q/l/?s=${encodeURIComponent(stooqSym)}&f=sd2t2ohlcv&h&e=csv`, { signal: AbortSignal.timeout(15000) })
+        const t = await r.text()
+        const line = t.trim().split('\n')[1]
+        if (!line) return `No data for ${sym}.`
+        const [symbol, date, time, open, high, low, close, volume] = line.split(',')
+        return `${symbol}: $${close} (open ${open}, high ${high}, low ${low}) on ${date} ${time} UTC`
+      }
+      case 'research': {
+        const s = await execTool('web_search', { query: args.topic }, surface, ctx)
+        const urls = (s.match(/https?:\/\/[^\s)\]]+/g) || []).slice(0, 3)
+        let corpus = ''
+        for (const u of urls) {
+          const f = await execTool('fetch_url', { url: u }, surface, ctx)
+          corpus += `\n\n--- ${u} ---\n${String(f).slice(0, 3000)}`
+        }
+        if (!corpus) return `No sources found for "${args.topic}".`
+        const { llmBaseUrl, llmApiKey, llmModel } = store.state.settings
+        const r = await fetch(`${llmBaseUrl.replace(/\/$/, '')}/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${llmApiKey}` },
+          body: JSON.stringify({ model: llmModel, messages: [
+            { role: 'system', content: 'You are a research analyst. Write a concise, well-structured summary with key facts and cite sources by URL.' },
+            { role: 'user', content: `Research topic: ${args.topic}\n\nSources:${corpus.slice(0, 12000)}` },
+          ], max_tokens: 1200 }),
+          signal: AbortSignal.timeout(90000),
+        })
+        const d = await r.json()
+        return d.choices?.[0]?.message?.content?.trim() || 'Research failed.'
       }
       default:
         return `Unknown tool: ${name}`
