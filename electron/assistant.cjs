@@ -788,6 +788,80 @@ const TOOLS = [
       parameters: { type: 'object', properties: {} },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_navigate',
+      description: 'Open a URL in Jarvis\'s own visible Chromium browser window.',
+      parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_snapshot',
+      description: 'Get current page URL, title, interactive elements and visible text. Call before clicking/typing.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_click',
+      description: 'Click an element on the current page by visible text (e.g. "Sign in", "Search").',
+      parameters: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_type',
+      description: 'Type text into the first visible input/textarea, or a CSS selector.',
+      parameters: { type: 'object', properties: {
+        text: { type: 'string' }, selector: { type: 'string' },
+      }, required: ['text'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_press',
+      description: 'Press a keyboard key on the page (Enter, Tab, Escape, arrows...).',
+      parameters: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_scroll',
+      description: 'Scroll the page up or down.',
+      parameters: { type: 'object', properties: { dir: { type: 'string', enum: ['up', 'down'] } }, required: ['dir'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_back',
+      description: 'Go back in browser history.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_eval',
+      description: 'Run JavaScript on the current page and return the result (power user).',
+      parameters: { type: 'object', properties: { js: { type: 'string' } }, required: ['js'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_close',
+      description: 'Close Jarvis\'s browser window.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
 ]
 
 async function execTool(name, args, surface, ctx = {}) {
@@ -1259,6 +1333,42 @@ async function execTool(name, args, surface, ctx = {}) {
         fs.writeFileSync(f, `# Jarvis Conversation\n\n${md}`)
         return `Exported to ${f}`
       }
+      case 'browser_navigate': {
+        const b = require('./browser.cjs')
+        return b.navigate(args.url)
+      }
+      case 'browser_snapshot': {
+        const b = require('./browser.cjs')
+        return b.snapshot()
+      }
+      case 'browser_click': {
+        const b = require('./browser.cjs')
+        return b.click(args.text)
+      }
+      case 'browser_type': {
+        const b = require('./browser.cjs')
+        return b.type(args.text, args.selector)
+      }
+      case 'browser_press': {
+        const b = require('./browser.cjs')
+        return b.press(args.key)
+      }
+      case 'browser_scroll': {
+        const b = require('./browser.cjs')
+        return b.scroll(args.dir === 'up' ? 'up' : 'down')
+      }
+      case 'browser_back': {
+        const b = require('./browser.cjs')
+        return b.back()
+      }
+      case 'browser_eval': {
+        const b = require('./browser.cjs')
+        return b.evaluate(args.js)
+      }
+      case 'browser_close': {
+        const b = require('./browser.cjs')
+        return b.close()
+      }
       default:
         return `Unknown tool: ${name}`
     }
@@ -1277,7 +1387,8 @@ const SYS_PROMPT = `You are Jarvis, a personal AI assistant running on the user'
 - You may also be reached via Slack on the user's phone — the same tools are available there.
 - For multi-step tasks, call update_plan first with your steps, then execute them.
 - Use see_screen when the user refers to what's on their screen ("this error", "this window").
-- Use memory_save to remember facts/preferences; memory_recall to look things up.`
+- Use memory_save to remember facts/preferences; memory_recall to look things up.
+- For web tasks use the browser_* tools: browser_navigate → browser_snapshot → browser_click/browser_type → repeat. The browser is a real visible window the user can watch.`
 
 async function chatOnce(messages, tools) {
   const { llmBaseUrl, llmApiKey, llmModel } = store.state.settings
