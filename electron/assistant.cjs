@@ -898,6 +898,16 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'show_route',
+      description: 'Draw a route line on the map UI between two places.',
+      parameters: { type: 'object', properties: {
+        from: { type: 'string' }, to: { type: 'string' }, profile: { type: 'string', enum: ['driving', 'walking', 'cycling'] },
+      }, required: ['from', 'to'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'weather_alert',
       description: 'Check tomorrow\'s forecast for a location and alert if severe weather (heavy rain, storm, extreme heat/cold).',
       parameters: { type: 'object', properties: { place: { type: 'string' } }, required: ['place'] },
@@ -1621,6 +1631,25 @@ async function execTool(name, args, surface, ctx = {}) {
         const turns = (rt.legs?.[0]?.steps || []).slice(0, 6).map(s => s.maneuver?.type).join(' → ')
         return `${prof}: ${km} km, ~${mins} min.\nSteps: ${turns || 'direct'}`
       }
+      case 'show_route': {
+        const { app } = require('electron')
+        const geo = async q => {
+          const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`, { headers: { 'User-Agent': 'Jarvis/1.0' }, signal: AbortSignal.timeout(15000) })
+          const d = await r.json(); return d[0] ? [+d[0].lon, +d[0].lat] : null
+        }
+        const a = await geo(args.from), b = await geo(args.to)
+        if (!a || !b) return 'Could not find one of the places.'
+        const prof = ['driving', 'walking', 'cycling'].includes(args.profile) ? args.profile : 'driving'
+        const svc = { driving: 'driving', walking: 'foot', cycling: 'bike' }[prof]
+        const r = await fetch(`https://router.project-osrm.org/route/v1/${svc}/${a[0]},${a[1]};${b[0]},${b[1]}?overview=full&geometries=geojson`, { signal: AbortSignal.timeout(20000) })
+        const d = await r.json()
+        const rt = d.routes?.[0]
+        if (!rt) return 'No route found.'
+        const coords = rt.geometry.coordinates.map(([lon, lat]) => [lat, lon])
+        const f = path.join(app.getPath('userData'), 'jarvis-route.json')
+        fs.writeFileSync(f, JSON.stringify({ coords, from: args.from, to: args.to, profile: prof, km: (rt.distance / 1000).toFixed(1), mins: Math.round(rt.duration / 60) }))
+        return `Route drawn on map: ${rt.distance / 1000 | 0} km, ~${Math.round(rt.duration / 60)} min (${args.from} → ${args.to}).`
+      }
       case 'nearby_places': {
         const geo = async q => {
           const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`, { headers: { 'User-Agent': 'Jarvis/1.0' }, signal: AbortSignal.timeout(15000) })
@@ -1818,4 +1847,5 @@ module.exports = {
   vaultList: () => Object.keys(loadVault()),
   getActivity: () => activityLog.slice(-30),
   getLocations: () => loadLocs(),
+  getRoute: () => { try { return JSON.parse(fs.readFileSync(path.join(require('electron').app.getPath('userData'), 'jarvis-route.json'), 'utf8')) } catch { return null } },
 }
