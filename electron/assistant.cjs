@@ -1031,6 +1031,17 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'py_engine',
+      description: 'Route a task to the Python intelligence engine (structured JSON output, deep analysis, autonomous planning). Modes: task (plan+result JSON), structured (schema JSON), analyze (deep reasoning), chat (plain reply).',
+      parameters: { type: 'object', properties: {
+        mode: { type: 'string', enum: ['task', 'structured', 'analyze', 'chat'] },
+        input: { type: 'string' }, schema_hint: { type: 'string' },
+      }, required: ['mode', 'input'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'list_locations',
       description: 'List all saved globe markers.',
       parameters: { type: 'object', properties: {} },
@@ -1799,6 +1810,22 @@ async function execTool(name, args, surface, ctx = {}) {
         if (args.type_it) { await psTypeText(t); return `Typed snippet "${args.key}".` }
         return t
       }
+      case 'py_engine': {
+        const py = require('./python.cjs')
+        const mode = ['task', 'structured', 'analyze', 'chat'].includes(args.mode) ? args.mode : 'task'
+        logActivity(`python engine: ${mode}`)
+        const ep = { task: '/task', structured: '/structured', analyze: '/analyze', chat: '/complete' }[mode]
+        const body = mode === 'chat'
+          ? { messages: [{ role: 'user', content: args.input }] }
+          : mode === 'structured'
+            ? { prompt: args.input, schema_hint: args.schema_hint || 'Return valid JSON only.' }
+            : mode === 'analyze'
+              ? { messages: [{ role: 'user', content: args.input }] }
+              : { goal: args.input }
+        const r = await py.call(ep, body)
+        if (!r.ok) return `Python engine error: ${r.error}`
+        return JSON.stringify(r.data || r.reply || r.analysis || r, null, 1).slice(0, 6000)
+      }
       case 'list_locations': {
         const locs = loadLocs()
         return locs.length ? locs.map(l => `- ${l.name} (${l.lat}, ${l.lon})`).join('\n') : 'No markers saved.'
@@ -1914,7 +1941,8 @@ const SYS_PROMPT = `You are Jarvis, a personal AI assistant running on the user'
 - Think step by step for complex requests; verify tool results before answering.
 - Use see_screen when the user refers to what's on their screen ("this error", "this window").
 - Use memory_save to remember facts/preferences; memory_recall to look things up.
-- For web tasks use the browser_* tools: browser_navigate → browser_snapshot → browser_click/browser_type → repeat. The browser is a real visible window the user can watch.`
+- For web tasks use the browser_* tools: browser_navigate → browser_snapshot → browser_click/browser_type → repeat. The browser is a real visible window the user can watch.
+- Use py_engine for: structured JSON output, deep analysis, or autonomous planning (modes: task/structured/analyze/chat). Prefer it over guessing formats.`
 
 async function chatOnce(messages, tools) {
   const { llmBaseUrl, llmApiKey, llmModel } = store.state.settings

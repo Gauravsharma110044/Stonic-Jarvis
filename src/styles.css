@@ -328,7 +328,7 @@ body {
 @keyframes pillPulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
 
 /* 3-column home layout */
-.home-grid { flex: 1; display: grid; grid-template-columns: 230px 1fr 400px; min-height: 0; }
+.home-grid { flex: 1; display: grid; grid-template-columns: 1fr 400px; min-height: 0; }
 .home-left { display: flex; flex-direction: column; border-right: 1px solid rgba(87,217,255,.1); padding: 10px; min-height: 0; }
 .home-mid { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; min-height: 0; }
 .home-mid-sub { font-size: 13px; color: var(--text-faint); letter-spacing: .5px; text-transform: capitalize; }
