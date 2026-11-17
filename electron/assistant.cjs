@@ -878,6 +878,50 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'map_directions',
+      description: 'Get driving/walking/cycling directions between two places (distance, duration, turn-by-turn).',
+      parameters: { type: 'object', properties: {
+        from: { type: 'string' }, to: { type: 'string' }, profile: { type: 'string', enum: ['driving', 'walking', 'cycling'] },
+      }, required: ['from', 'to'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'nearby_places',
+      description: 'Find nearby places (cafe, hospital, atm, petrol pump...) around a location.',
+      parameters: { type: 'object', properties: {
+        place: { type: 'string' }, kind: { type: 'string', description: 'e.g. cafe, hospital, atm, restaurant, petrol_station' }, radius_m: { type: 'number' },
+      }, required: ['place', 'kind'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'weather_alert',
+      description: 'Check tomorrow\'s forecast for a location and alert if severe weather (heavy rain, storm, extreme heat/cold).',
+      parameters: { type: 'object', properties: { place: { type: 'string' } }, required: ['place'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'backup_data',
+      description: 'Export all Jarvis data (memory, jobs, settings, vault names) to a backup file on Desktop.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'restore_data',
+      description: 'Restore Jarvis data from a backup file.',
+      parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'list_locations',
       description: 'List all saved globe markers.',
       parameters: { type: 'object', properties: {} },
@@ -1559,6 +1603,78 @@ async function execTool(name, args, surface, ctx = {}) {
       case 'list_locations': {
         const locs = loadLocs()
         return locs.length ? locs.map(l => `- ${l.name} (${l.lat}, ${l.lon})`).join('\n') : 'No markers saved.'
+      }
+      case 'map_directions': {
+        const geo = async q => {
+          const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`, { headers: { 'User-Agent': 'Jarvis/1.0' }, signal: AbortSignal.timeout(15000) })
+          const d = await r.json(); return d[0] ? [+d[0].lon, +d[0].lat] : null
+        }
+        const a = await geo(args.from), b = await geo(args.to)
+        if (!a || !b) return 'Could not find one of the places.'
+        const prof = ['driving', 'walking', 'cycling'].includes(args.profile) ? args.profile : 'driving'
+        const svc = { driving: 'driving', walking: 'foot', cycling: 'bike' }[prof]
+        const r = await fetch(`https://router.project-osrm.org/route/v1/${svc}/${a[0]},${a[1]};${b[0]},${b[1]}?overview=false&steps=true`, { signal: AbortSignal.timeout(20000) })
+        const d = await r.json()
+        const rt = d.routes?.[0]
+        if (!rt) return 'No route found.'
+        const mins = Math.round(rt.duration / 60), km = (rt.distance / 1000).toFixed(1)
+        const turns = (rt.legs?.[0]?.steps || []).slice(0, 6).map(s => s.maneuver?.type).join(' → ')
+        return `${prof}: ${km} km, ~${mins} min.\nSteps: ${turns || 'direct'}`
+      }
+      case 'nearby_places': {
+        const geo = async q => {
+          const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`, { headers: { 'User-Agent': 'Jarvis/1.0' }, signal: AbortSignal.timeout(15000) })
+          const d = await r.json(); return d[0] ? [+d[0].lon, +d[0].lat] : null
+        }
+        const c = await geo(args.place)
+        if (!c) return `Could not find "${args.place}".`
+        const radius = Math.min(5000, Math.max(100, +args.radius_m || 1000))
+        const tagMap = { cafe: 'amenity=cafe', restaurant: 'amenity=restaurant', hospital: 'amenity=hospital', atm: 'amenity=atm', petrol_station: 'amenity=fuel', pharmacy: 'amenity=pharmacy', park: 'leisure=park', hotel: 'tourism=hotel', school: 'amenity=school', station: 'railway=station', supermarket: 'shop=supermarket', gym: 'leisure=fitness_centre' }
+        const q = tagMap[String(args.kind)] || `name~"${args.kind}",i`
+        const overpassQ = `[out:json][timeout:20];(node(around:${radius},${c[1]},${c[0]})[${q}];way(around:${radius},${c[1]},${c[0]})[${q}];);out center tags 15;`
+        const r = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: `data=${encodeURIComponent(overpassQ)}`, signal: AbortSignal.timeout(30000) })
+        const d = await r.json()
+        const els = d.elements || []
+        if (!els.length) return `No ${args.kind} found within ${radius}m of ${args.place}.`
+        return els.slice(0, 10).map(e => `- ${e.tags?.name || e.tags?.[Object.keys(e.tags || {}).find(k => k.startsWith('amenity') || k.startsWith('shop') || k.startsWith('leisure'))] || 'unnamed'} (${(e.lat || e.center?.lat)?.toFixed(4)}, ${(e.lon || e.center?.lon)?.toFixed(4)})`).join('\n')
+      }
+      case 'weather_alert': {
+        const geo = async q => {
+          const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`, { headers: { 'User-Agent': 'Jarvis/1.0' }, signal: AbortSignal.timeout(15000) })
+          const d = await r.json(); return d[0] ? [+d[0].lat, +d[0].lon] : null
+        }
+        const c = await geo(args.place)
+        if (!c) return `Could not find "${args.place}".`
+        const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c[0]}&longitude=${c[1]}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=2`, { signal: AbortSignal.timeout(15000) })
+        const d = await r.json()
+        if (!d.daily) return 'Forecast unavailable.'
+        const codes = { 0: 'clear', 1: 'mainly clear', 2: 'partly cloudy', 3: 'overcast', 45: 'fog', 48: 'fog', 51: 'drizzle', 61: 'rain', 63: 'heavy rain', 65: 'very heavy rain', 71: 'snow', 80: 'showers', 95: 'thunderstorm', 96: 'thunderstorm+hail', 99: 'severe thunderstorm' }
+        const out = []
+        for (let i = 0; i < 2; i++) {
+          const code = d.daily.weathercode[i], name = codes[code] || `code ${code}`
+          const severe = [63, 65, 71, 80, 95, 96, 99].includes(code) || d.daily.temperature_2m_max[i] > 45 || d.daily.temperature_2m_min[i] < -10
+          out.push(`${d.daily.time[i]}: ${name}, ${d.daily.temperature_2m_min[i]}°→${d.daily.temperature_2m_max[i]}°C, rain ${d.daily.precipitation_probability_max[i]}%${severe ? ' ⚠️ SEVERE' : ''}`)
+        }
+        return out.join('\n')
+      }
+      case 'backup_data': {
+        const { app } = require('electron')
+        const bundle = {
+          memory, jobs, settings: store.state.settings,
+          vaultNames: Object.keys(loadVault()),
+          locations: loadLocs(), ts: Date.now(),
+        }
+        const f = path.join(app.getPath('desktop'), `jarvis-backup-${Date.now()}.json`)
+        fs.writeFileSync(f, JSON.stringify(bundle, null, 2))
+        return `Backup saved: ${f} (memory, jobs, settings, vault names, locations)`
+      }
+      case 'restore_data': {
+        const b = JSON.parse(fs.readFileSync(resolvePath(args.path), 'utf8'))
+        if (b.memory) { memory.facts = b.memory.facts || []; memory.lessons = b.memory.lessons || []; memory.plans = b.memory.plans || []; saveMem() }
+        if (Array.isArray(b.jobs)) { jobs.length = 0; jobs.push(...b.jobs); saveJobs() }
+        if (b.locations) saveLocs(b.locations)
+        if (b.settings) { store.state.settings = { ...store.state.settings, ...b.settings }; store.save() }
+        return 'Restore complete — restart recommended.'
       }
       default:
         return `Unknown tool: ${name}`

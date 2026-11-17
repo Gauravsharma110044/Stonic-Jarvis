@@ -104,6 +104,18 @@ function start() {
         })
         return
       }
+      if (url.pathname === '/api/webhook' && req.method === 'POST') {
+        let body = ''
+        req.on('data', c => body += c)
+        req.on('end', async () => {
+          try {
+            const { event, text } = JSON.parse(body || '{}')
+            const reply = await assistant.handleMessage(text || `webhook event: ${event || 'ping'}`, 'webhook')
+            json(res, 200, { reply })
+          } catch (e) { json(res, 500, { error: e.message }) }
+        })
+        return
+      }
       return json(res, 404, { error: 'not found' })
     }
     json(res, 404, { error: 'not found' })
