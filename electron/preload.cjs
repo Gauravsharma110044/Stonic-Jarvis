@@ -1,0 +1,23 @@
+const { contextBridge, ipcRenderer } = require('electron')
+
+contextBridge.exposeInMainWorld('jarvis', {
+  snapshot: () => ipcRenderer.invoke('store:snapshot'),
+  createChannel: (name) => ipcRenderer.invoke('channel:create', name),
+  openDM: (userId) => ipcRenderer.invoke('channel:openDM', userId),
+  sendMessage: (channelId, text, opts) => ipcRenderer.invoke('message:send', { channelId, text, ...(opts || {}) }),
+  react: (channelId, messageId, emoji) => ipcRenderer.invoke('message:react', { channelId, messageId, emoji }),
+  search: (q) => ipcRenderer.invoke('search:query', q),
+  getSettings: () => ipcRenderer.invoke('settings:get'),
+  setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
+  slackStatus: () => ipcRenderer.invoke('slack:status'),
+  onUpdate: (cb) => ipcRenderer.on('store:update', (_e, what) => cb(what)),
+  onTyping: (cb) => ipcRenderer.on('jarvis:typing', (_e, channelId) => cb(channelId)),
+  winMinimize: () => ipcRenderer.invoke('window:minimize'),
+  winToggleMaximize: () => ipcRenderer.invoke('window:maximize'),
+  winClose: () => ipcRenderer.invoke('window:close'),
+  winIsMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  onMaximized: (cb) => ipcRenderer.on('window:maximized', (_e, v) => cb(v)),
+  sysMetrics: () => ipcRenderer.invoke('sys:metrics'),
+  notesList: () => ipcRenderer.invoke('notes:list'),
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+})

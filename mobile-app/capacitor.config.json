@@ -1,0 +1,12 @@
+{
+  "appId": "com.stonic.jarvis",
+  "appName": "Jarvis",
+  "webDir": "www",
+  "server": {
+    "url": "http://100.70.72.84:3434",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

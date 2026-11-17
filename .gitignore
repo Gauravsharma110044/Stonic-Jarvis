@@ -1,0 +1,13 @@
+node_modules/
+dist/
+release/
+.env
+.env.local
+*.log
+.DS_Store
+mobile-app/node_modules/
+mobile-app/android/
+mobile-app/android-sdk/
+website/node_modules/
+*.apk
+*.aab

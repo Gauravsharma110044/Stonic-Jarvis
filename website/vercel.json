@@ -1,0 +1,12 @@
+{
+  "headers": [
+    {
+      "source": "/(.*).apk",
+      "headers": [{ "key": "Content-Type", "value": "application/vnd.android.package-archive" }]
+    },
+    {
+      "source": "/(.*).exe",
+      "headers": [{ "key": "Content-Type", "value": "application/vnd.microsoft.portable-executable" }]
+    }
+  ]
+}
