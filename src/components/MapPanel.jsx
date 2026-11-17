@@ -42,19 +42,6 @@ export default function MapPanel() {
     }
     loadMarkers()
     const t = setInterval(loadMarkers, 15000)
-
-    // click map → identify place → ask Jarvis
-    map.on('click', async e => {
-      const { lat, lng } = e.latlng
-      L.circleMarker([lat, lng], { radius: 7, color: '#57d9ff', weight: 2, fillColor: '#57d9ff', fillOpacity: 0.8 }).addTo(map)
-      let name = `${lat.toFixed(4)}, ${lng.toFixed(4)}`
-      try {
-        const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`, { headers: { 'User-Agent': 'Jarvis/1.0' } })
-        const d = await r.json()
-        name = d.display_name?.split(',').slice(0, 3).join(',') || name
-      } catch {}
-      window.jarvis.sendMessage('d-jarvis', `I clicked on the map at ${name}. Tell me about this place.`)
-    })
     return () => { clearInterval(t); map.remove(); mapRef.current = null }
   }, [])
 
