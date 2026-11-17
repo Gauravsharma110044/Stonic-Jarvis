@@ -32,6 +32,12 @@ function createWindow() {
   })
   win.on('maximize', () => win.webContents.send('window:maximized', true))
   win.on('unmaximize', () => win.webContents.send('window:maximized', false))
+  // self-heal: auto-reload if renderer crashes
+  win.webContents.on('render-process-gone', (_e, details) => {
+    console.error('[crash] renderer gone:', details.reason)
+    if (details.reason !== 'clean-exit') setTimeout(() => { if (win && !win.isDestroyed()) win.reload() }, 800)
+  })
+  win.webContents.on('unresponsive', () => console.warn('[crash] renderer unresponsive'))
   const devUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173'
   if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
     win.loadURL(devUrl).catch(() => win.loadFile(path.join(__dirname, '..', 'dist', 'index.html')))

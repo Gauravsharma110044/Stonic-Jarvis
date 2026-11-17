@@ -1534,20 +1534,41 @@ async function agentLoop(text, surface, ctx = {}) {
     ...hist,
     { role: 'user', content: text },
   ]
+  const toolErrors = []
+  const failCounts = {}
+  let resultsHint = ''
   for (let i = 0; i < 10; i++) {
     const msg = await chatOnce(messages, TOOLS)
     if (!msg) return null
     messages.push(msg)
     const calls = msg.tool_calls || []
-    if (!calls.length) return msg.content?.trim() || 'Done.'
+    if (!calls.length) {
+      const reply = msg.content?.trim() || 'Done.'
+      // self-heal: if tools failed and the model gave up, push it to try a different approach
+      if (toolErrors.length && i < 9 && /fail|error|unable|cannot|can't|sorry/i.test(reply)) {
+        messages.push({ role: 'user', content: `Some tools failed: ${toolErrors.slice(-3).join('; ')}. Do NOT give up — try a different tool or approach to still accomplish the goal. If truly impossible, explain exactly why in one line.` })
+        continue
+      }
+      return reply
+    }
     // run independent tool calls in parallel
     const results = await Promise.all(calls.map(async call => {
       let args = {}
       try { args = JSON.parse(call.function.arguments || '{}') } catch {}
       const result = await execTool(call.function.name, args, surface, ctx)
-      return { role: 'tool', tool_call_id: call.id, content: String(result) }
+      const rs = String(result)
+      if (/^(Tool error|.*failed|.*error)/i.test(rs) && rs.length < 300) {
+        toolErrors.push(`${call.function.name}: ${rs.slice(0, 120)}`)
+        failCounts[call.function.name] = (failCounts[call.function.name] || 0) + 1
+        if (failCounts[call.function.name] >= 2) {
+          memAdd('lessons', `tool ${call.function.name} failed repeatedly — find alternative`)
+          results_hint = `Tool ${call.function.name} has failed ${failCounts[call.function.name]}x — STOP retrying it, use a different approach.`
+        }
+      }
+      return { role: 'tool', tool_call_id: call.id, content: rs }
     }))
     messages.push(...results)
+    if (resultsHint) { messages.push({ role: 'system', content: resultsHint }); resultsHint = '' }
   }
   return 'I completed the requested steps.'
 }
