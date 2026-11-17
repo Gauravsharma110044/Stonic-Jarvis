@@ -14,11 +14,28 @@ export default function GlobePanel() {
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio))
     el.appendChild(renderer.domElement)
 
-    // lights for sphere shading
-    scene.add(new THREE.AmbientLight(0x334466, 1.4))
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6)
-    sun.position.set(4, 2, 5)
+    // real-time sun position → day/night cycle
+    const sun = new THREE.DirectionalLight(0xfff0d8, 2.2)
     scene.add(sun)
+    scene.add(new THREE.AmbientLight(0x1a2a4a, 0.7))
+    const moonFill = new THREE.DirectionalLight(0x4466aa, 0.25)
+    scene.add(moonFill)
+    const subsolar = () => {
+      const now = new Date()
+      const doy = (now - Date.UTC(now.getUTCFullYear(), 0, 0)) / 864e5
+      const decl = -23.44 * Math.cos(2 * Math.PI * (doy + 10) / 365) * Math.PI / 180
+      const utcH = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600
+      const ha = (utcH - 12) * 15 * Math.PI / 180
+      const phi = Math.PI / 2 - decl
+      return new THREE.Vector3(Math.sin(phi) * Math.cos(ha), Math.cos(phi), Math.sin(phi) * Math.sin(ha))
+    }
+    const updateSun = () => {
+      const s = subsolar()
+      sun.position.copy(s).multiplyScalar(6)
+      moonFill.position.copy(s).multiplyScalar(-6)
+    }
+    updateSun()
+    const sunTimer = setInterval(updateSun, 30000)
 
     const globe = new THREE.Group()
     scene.add(globe)
@@ -130,6 +147,7 @@ export default function GlobePanel() {
     return () => {
       cancelAnimationFrame(raf)
       clearInterval(locTimer)
+      clearInterval(sunTimer)
       ro.disconnect()
       dom.removeEventListener('pointerdown', down)
       window.removeEventListener('pointermove', move)
