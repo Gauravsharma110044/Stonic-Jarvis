@@ -1128,6 +1128,17 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'system_power',
+      description: 'Power actions: shutdown, restart, sleep, hibernate, logoff, lock. REQUIRES approval — will ask user to confirm.',
+      parameters: { type: 'object', properties: {
+        action: { type: 'string', enum: ['shutdown','restart','sleep','hibernate','logoff','lock'] },
+        delay_seconds: { type: 'number' },
+      }, required: ['action'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'list_locations',
       description: 'List all saved globe markers.',
       parameters: { type: 'object', properties: {} },
@@ -2009,7 +2020,19 @@ async function execTool(name, args, surface, ctx = {}) {
           return arr.filter(x => x.Path).map(x => `${x.Path}:${x.LineNumber}`).join('\n') || 'No matches.'
         } catch { return r?.slice(0, 2000) || 'No matches.' }
       }
-      case 'request_approval': {
+            case 'system_power': {
+        const names = { shutdown: 'Shut down', restart: 'Restart', sleep: 'Sleep', hibernate: 'Hibernate', logoff: 'Log off', lock: 'Lock' }
+        if (args.action === 'lock') { await psRun('rundll32.exe user32.dll,LockWorkStation'); return 'Screen locked.' }
+        const delay = Math.min(300, Math.max(0, +args.delay_seconds || 10))
+        pendingApprovals.push({ tool: '_power_exec', args: { action: args.action, delay }, surface, ctx: { ...ctx }, action: names[args.action] || args.action, ts: Date.now() })
+        return 'APPROVAL_REQUIRED: PC will ' + (names[args.action]||args.action) + ' in ' + delay + 's. Ask user to confirm (yes/no).'
+      }
+      case '_power_exec': {
+        const cmds = { shutdown: 'shutdown /s /t 0', restart: 'shutdown /r /t 0', sleep: 'rundll32.exe powrprof.dll,SetSuspendState 0,1,0', hibernate: 'shutdown /h', logoff: 'shutdown /l' }
+        await psRun(cmds[args.action] || 'shutdown /s /t 0')
+        return args.action + ' executed.'
+      }
+case 'request_approval': {
         let a = {}
         try { a = JSON.parse(args.args || '{}') } catch {}
         pendingApprovals.push({ tool: args.tool, args: a, surface, ctx: { ...ctx }, action: args.action, ts: Date.now() })
