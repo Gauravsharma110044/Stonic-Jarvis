@@ -346,3 +346,6 @@ body {
 .activity-dot { width: 5px; height: 5px; border-radius: 50%; background: #38e0a0; box-shadow: 0 0 6px #38e0a0; flex-shrink: 0; }
 .activity-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; }
 .activity-time { color: var(--text-faint); font-size: 9px; flex-shrink: 0; }
+
+.map-frame { width: 100%; height: 240px; border: none; border-radius: 10px; background: #0a1a33; flex-shrink: 0; }
+.map-loading { display: flex; align-items: center; justify-content: center; color: var(--text-faint); font-size: 11px; }
