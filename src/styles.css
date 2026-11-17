@@ -355,3 +355,5 @@ body {
 .leaflet-map .leaflet-tile-pane { filter: invert(100%) hue-rotate(180deg) brightness(0.82) contrast(1.05) saturate(0.6); }
 .leaflet-map .leaflet-control-attribution { display: none; }
 .leaflet-map .leaflet-control-zoom { display: none; }
+
+.activity-feed { width: 100%; padding: 6px 16px 8px; border-top: 1px solid rgba(87,217,255,.12); background: rgba(6,12,26,.6); flex-shrink: 0; }

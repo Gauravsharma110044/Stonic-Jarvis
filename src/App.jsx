@@ -225,11 +225,10 @@ export default function App() {
       <div className="body">
         <SideNav section={section} onNav={onNav} />
         <main className="center">
-          {section === 'home' && (
+          {section === 'home' && (<>
             <div className="home-grid">
               <aside className="home-left">
                 <MapPanel />
-                <ActivityFeed />
               </aside>
               <section className="home-mid">
                 <JarvisCore state={coreState} analyser={analyser} size={170} />
@@ -291,7 +290,8 @@ export default function App() {
                 />
               </section>
             </div>
-          )}
+            <ActivityFeed />
+          </>)}
           {section === 'memory' && <MemoryPanel />}
           {['apps', 'files', 'workspace'].includes(section) && <PlaceholderPanel kind={section} />}
         </main>
