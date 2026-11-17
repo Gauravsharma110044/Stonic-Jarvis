@@ -4,6 +4,7 @@ import SideNav from './components/SideNav.jsx'
 import StatusBar from './components/StatusBar.jsx'
 import JarvisCore from './components/JarvisCore.jsx'
 import ComposerBar from './components/ComposerBar.jsx'
+import GlobePanel from './components/Globe.jsx'
 import SettingsModal from './components/SettingsModal.jsx'
 import { MemoryPanel, PlaceholderPanel } from './components/Panels.jsx'
 import { renderText } from './utils.jsx'
@@ -224,11 +225,17 @@ export default function App() {
         <SideNav section={section} onNav={onNav} />
         <main className="center">
           {section === 'home' && (
-            <>
-              <div className="core-area">
-                <JarvisCore state={coreState} analyser={analyser} size={section === 'home' ? 170 : 0} />
-              </div>
-              <div className="chat-scroll">
+            <div className="home-grid">
+              <aside className="home-left">
+                <GlobePanel />
+                <div className="globe-label">JARVIS CORE SYSTEMS</div>
+              </aside>
+              <section className="home-mid">
+                <JarvisCore state={coreState} analyser={analyser} size={170} />
+                <div className="home-mid-sub">{coreState === 'idle' ? 'How can I assist you today?' : coreState}</div>
+              </section>
+              <section className="home-right">
+                <div className="chat-scroll">
                 {messages.map((m, i) => {
                   const mine = m.userId === 'you'
                   const showMeta = i === 0 || messages[i - 1].userId !== m.userId || m.ts - messages[i - 1].ts > 5 * 60000
@@ -269,19 +276,20 @@ export default function App() {
                 )}
                 <div ref={bottomRef} />
               </div>
-              <ComposerBar
-                value={text}
-                onChange={setText}
-                onSend={() => send()}
-                onMic={toggleMic}
-                listening={listening}
-                interim={interim}
-                micSupported={micSupported}
-                attachments={attachments}
-                onFiles={onFiles}
-                onRemoveAttachment={onRemoveAttachment}
-              />
-            </>
+                <ComposerBar
+                  value={text}
+                  onChange={setText}
+                  onSend={() => send()}
+                  onMic={toggleMic}
+                  listening={listening}
+                  interim={interim}
+                  micSupported={micSupported}
+                  attachments={attachments}
+                  onFiles={onFiles}
+                  onRemoveAttachment={onRemoveAttachment}
+                />
+              </section>
+            </div>
           )}
           {section === 'memory' && <MemoryPanel />}
           {['apps', 'files', 'workspace'].includes(section) && <PlaceholderPanel kind={section} />}
