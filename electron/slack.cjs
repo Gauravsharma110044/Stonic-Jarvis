@@ -27,7 +27,7 @@ async function start() {
     app.event('app_mention', async ({ event, say }) => {
       console.log('[slack] app_mention:', (event.text || '').slice(0, 80))
       const text = (event.text || '').replace(/<@[A-Z0-9]+>/g, '').trim()
-      try { await replyViaSlack(text, say) }
+      try { await replyViaSlack(text, say, event) }
       catch (e) { console.error('[slack] mention handler error:', e.message); await say('Sorry, something went wrong.').catch(() => {}) }
     })
 
@@ -35,7 +35,7 @@ async function start() {
     app.event('message', async ({ event, say }) => {
       if (event.channel_type !== 'im' || event.bot_id || event.subtype) return
       console.log('[slack] DM:', (event.text || '').slice(0, 80))
-      try { await replyViaSlack(event.text || '', say) }
+      try { await replyViaSlack(event.text || '', say, event) }
       catch (e) { console.error('[slack] dm handler error:', e.message); await say('Sorry, something went wrong.').catch(() => {}) }
     })
 
@@ -49,10 +49,18 @@ async function start() {
   }
 }
 
-async function replyViaSlack(text, say) {
-  // show "thinking" then answer
+async function replyViaSlack(text, say, event) {
+  // mark the message as seen, then answer
+  if (event && app?.client) {
+    app.client.reactions.add({ channel: event.channel, timestamp: event.ts, name: 'eyes' }).catch(() => {})
+  }
   const reply = await assistant.handleMessage(text, 'slack')
-  if (reply) await say({ text: reply, mrkdwn: true })
+  if (reply) {
+    await say({ text: reply, mrkdwn: true })
+    if (event && app?.client) {
+      app.client.reactions.add({ channel: event.channel, timestamp: event.ts, name: 'white_check_mark' }).catch(() => {})
+    }
+  }
 }
 
 async function stop() {

@@ -84,6 +84,10 @@ app.whenReady().then(() => {
     return store.state.settings
   })
   ipcMain.handle('slack:status', () => slack.status())
+  ipcMain.handle('memory:get', () => assistant.getMemory())
+  ipcMain.handle('jobs:list', () => assistant.getJobs())
+  ipcMain.handle('jobs:cancel', (_e, id) => assistant.cancelJob(id))
+  ipcMain.handle('vault:list', () => assistant.vaultList())
   ipcMain.handle('window:minimize', () => win?.minimize())
   ipcMain.handle('window:maximize', () => {
     if (!win) return

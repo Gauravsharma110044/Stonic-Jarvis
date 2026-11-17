@@ -31,6 +31,7 @@ function seedState() {
       llmBaseUrl: 'https://integrate.api.nvidia.com/v1',
       llmApiKey: '',
       llmModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      visionModel: 'nvidia/nemotron-3.5-super-vl-120b-a12b',
       demoActivity: true,
       voiceOutput: false,
       defaultBrowser: '',

@@ -64,6 +64,13 @@ export default function SettingsModal({ settings, slackStatus, onClose, onSave }
             placeholder="gpt-4o-mini" />
         </div>
 
+        <div className="field">
+          <label>Vision model</label>
+          <input type="text" value={form.visionModel || ''} onChange={e => set('visionModel', e.target.value)}
+            placeholder="nvidia/nemotron-3.5-super-vl-120b-a12b" />
+          <div className="hint">Used by see_screen. Must support image input.</div>
+        </div>
+
         <h3 style={{ fontSize: 13, margin: '16px 0 8px' }}>Updates</h3>
         <div className="field">
           <button className="btn btn-ghost" onClick={checkUpdates} disabled={checking}>

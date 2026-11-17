@@ -19,5 +19,9 @@ contextBridge.exposeInMainWorld('jarvis', {
   onMaximized: (cb) => ipcRenderer.on('window:maximized', (_e, v) => cb(v)),
   sysMetrics: () => ipcRenderer.invoke('sys:metrics'),
   notesList: () => ipcRenderer.invoke('notes:list'),
+  memoryGet: () => ipcRenderer.invoke('memory:get'),
+  jobsList: () => ipcRenderer.invoke('jobs:list'),
+  jobCancel: (id) => ipcRenderer.invoke('jobs:cancel', id),
+  vaultList: () => ipcRenderer.invoke('vault:list'),
   updateCheck: () => ipcRenderer.invoke('update:check'),
 })

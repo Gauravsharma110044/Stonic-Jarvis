@@ -756,6 +756,38 @@ const TOOLS = [
       }, required: ['when'] },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'read_document',
+      description: 'Extract text from a document: PDF, DOCX, TXT, MD, CSV.',
+      parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_jobs',
+      description: 'List all scheduled jobs (reminders, recurring tasks, watchers).',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cancel_job',
+      description: 'Cancel a scheduled job by its id (from list_jobs).',
+      parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'export_chat',
+      description: 'Export the Jarvis conversation to a Markdown file on Desktop.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
 ]
 
 async function execTool(name, args, surface, ctx = {}) {
@@ -1193,6 +1225,40 @@ async function execTool(name, args, surface, ctx = {}) {
         memAdd('plans', JSON.stringify(steps))
         return `Plan recorded (${steps.length} steps):\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\nNow execute them.`
       }
+      case 'read_document': {
+        const p = resolvePath(args.path)
+        const ext = path.extname(p).toLowerCase()
+        if (ext === '.pdf') {
+          const pdfParse = require('pdf-parse')
+          const data = await pdfParse(fs.readFileSync(p))
+          return (data.text || '(no text — scanned PDF?)').slice(0, 8000)
+        }
+        if (ext === '.docx') {
+          const mammoth = require('mammoth')
+          const r = await mammoth.extractRawText({ path: p })
+          return (r.value || '').slice(0, 8000)
+        }
+        return fs.readFileSync(p, 'utf8').slice(0, 8000)
+      }
+      case 'list_jobs': {
+        if (!jobs.length) return 'No scheduled jobs.'
+        return jobs.map(j => `- [${j.id}] ${j.desc} (${j.kind})`).join('\n')
+      }
+      case 'cancel_job': {
+        const j = jobs.find(x => x.id === String(args.id))
+        if (!j) return `No job with id ${args.id}.`
+        jobs = jobs.filter(x => x.id !== j.id); saveJobs()
+        clearTimeout(jobTimers.get(j.id)); jobTimers.delete(j.id)
+        return `Cancelled: ${j.desc}`
+      }
+      case 'export_chat': {
+        const { app } = require('electron')
+        const msgs = store.state.messages['d-jarvis'] || []
+        const md = msgs.map(m => `**${m.userId === 'jarvis' ? 'Jarvis' : 'You'}** (${new Date(m.ts).toLocaleString()}):\n${m.text}\n`).join('\n---\n\n')
+        const f = path.join(app.getPath('desktop'), `jarvis-chat-${Date.now()}.md`)
+        fs.writeFileSync(f, `# Jarvis Conversation\n\n${md}`)
+        return `Exported to ${f}`
+      }
       default:
         return `Unknown tool: ${name}`
     }
@@ -1297,4 +1363,10 @@ async function handleMessage(text, surface, ctx = {}) {
   return `I'm here. Type \`/help\` for commands, or ask me to do something — I can open apps, run commands, manage files, search the web, set reminders.`
 }
 
-module.exports = { handleMessage, HELP }
+module.exports = {
+  handleMessage, HELP,
+  getMemory: () => ({ facts: memory.facts || [], lessons: memory.lessons || [], plans: memory.plans || [] }),
+  getJobs: () => jobs.map(j => ({ id: j.id, desc: j.desc, kind: j.kind })),
+  cancelJob: id => { const i = jobs.findIndex(j => j.id === id); if (i < 0) return false; const j = jobs[i]; jobs.splice(i, 1); saveJobs(); clearTimeout(jobTimers.get(j.id)); jobTimers.delete(j.id); return true },
+  vaultList: () => Object.keys(loadVault()),
+}
