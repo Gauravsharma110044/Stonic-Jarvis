@@ -5,6 +5,7 @@ import StatusBar from './components/StatusBar.jsx'
 import JarvisCore from './components/JarvisCore.jsx'
 import ComposerBar from './components/ComposerBar.jsx'
 import GlobePanel from './components/Globe.jsx'
+import ActivityFeed from './components/ActivityFeed.jsx'
 import SettingsModal from './components/SettingsModal.jsx'
 import { MemoryPanel, PlaceholderPanel } from './components/Panels.jsx'
 import { renderText } from './utils.jsx'
@@ -228,7 +229,7 @@ export default function App() {
             <div className="home-grid">
               <aside className="home-left">
                 <GlobePanel />
-                <div className="globe-label">JARVIS CORE SYSTEMS</div>
+                <ActivityFeed />
               </aside>
               <section className="home-mid">
                 <JarvisCore state={coreState} analyser={analyser} size={170} />

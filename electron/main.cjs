@@ -94,6 +94,7 @@ app.whenReady().then(() => {
   ipcMain.handle('jobs:list', () => assistant.getJobs())
   ipcMain.handle('jobs:cancel', (_e, id) => assistant.cancelJob(id))
   ipcMain.handle('vault:list', () => assistant.vaultList())
+  ipcMain.handle('activity:get', () => assistant.getActivity())
   ipcMain.handle('window:minimize', () => win?.minimize())
   ipcMain.handle('window:maximize', () => {
     if (!win) return

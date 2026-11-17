@@ -901,9 +901,17 @@ const TOOLS = [
   },
 ]
 
+// live activity feed for UI
+const activityLog = []
+function logActivity(text) {
+  activityLog.push({ ts: Date.now(), text: String(text).slice(0, 120) })
+  if (activityLog.length > 40) activityLog.splice(0, activityLog.length - 40)
+}
+
 async function execTool(name, args, surface, ctx = {}) {
   const desktop = true // owner-only surfaces: desktop app + own Slack workspace
   const needDesktop = () => 'This action only works when the user is on their PC (Slack is remote-only for safety).'
+  logActivity(`${name} ${JSON.stringify(args || {}).slice(0, 80)}`)
   try {
     switch (name) {
       case 'open_app': {
@@ -1623,4 +1631,5 @@ module.exports = {
   getJobs: () => jobs.map(j => ({ id: j.id, desc: j.desc, kind: j.kind })),
   cancelJob: id => { const i = jobs.findIndex(j => j.id === id); if (i < 0) return false; const j = jobs[i]; jobs.splice(i, 1); saveJobs(); clearTimeout(jobTimers.get(j.id)); jobTimers.delete(j.id); return true },
   vaultList: () => Object.keys(loadVault()),
+  getActivity: () => activityLog.slice(-30),
 }
