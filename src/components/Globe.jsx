@@ -1,100 +1,94 @@
 import React, { useEffect, useRef } from 'react'
-
-// Rotating dotted 3D globe with feature beacons
-const BEACONS = [
-  { label: 'VISION', lat: 0.5, lon: 0.3, color: '#57d9ff' },
-  { label: 'BROWSER', lat: -0.3, lon: 1.2, color: '#7aa8ff' },
-  { label: 'FILES', lat: 0.9, lon: 2.4, color: '#38e0a0' },
-  { label: 'SLACK', lat: -0.7, lon: 3.6, color: '#b48cff' },
-  { label: 'VAULT', lat: 0.2, lon: 4.8, color: '#ffd166' },
-  { label: 'AGENTS', lat: -0.5, lon: 5.7, color: '#ff7a9e' },
-]
+import * as THREE from 'three'
+import earthUrl from '../assets/earth.jpg'
 
 export default function GlobePanel() {
   const ref = useRef(null)
   useEffect(() => {
-    const cv = ref.current
-    const ctx = cv.getContext('2d')
-    let raf, t = 0
-    const DPR = Math.min(2, window.devicePixelRatio || 1)
-    const resize = () => {
-      cv.width = cv.clientWidth * DPR; cv.height = cv.clientHeight * DPR
-    }
-    resize()
-    window.addEventListener('resize', resize)
+    const el = ref.current
+    const scene = new THREE.Scene()
+    const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100)
+    camera.position.z = 2.6
 
-    // fibonacci sphere dots
-    const N = 700, pts = []
-    const golden = Math.PI * (3 - Math.sqrt(5))
-    for (let i = 0; i < N; i++) {
-      const y = 1 - (i / (N - 1)) * 2
-      const r = Math.sqrt(1 - y * y)
-      const th = golden * i
-      pts.push({ x: Math.cos(th) * r, y, z: Math.sin(th) * r, s: Math.random() })
-    }
-    const beacons = BEACONS.map(b => {
-      const lat = b.lat, lon = b.lon
-      return {
-        ...b,
-        x: Math.cos(lat) * Math.cos(lon), y: Math.sin(lat), z: Math.cos(lat) * Math.sin(lon),
-      }
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio))
+    el.appendChild(renderer.domElement)
+
+    // lights for sphere shading
+    scene.add(new THREE.AmbientLight(0x334466, 1.4))
+    const sun = new THREE.DirectionalLight(0xffffff, 1.6)
+    sun.position.set(4, 2, 5)
+    scene.add(sun)
+
+    const globe = new THREE.Group()
+    scene.add(globe)
+
+    const loader = new THREE.TextureLoader()
+    loader.load(earthUrl, tex => {
+      tex.colorSpace = THREE.SRGBColorSpace
+      const earth = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 64, 64),
+        new THREE.MeshPhongMaterial({ map: tex, shininess: 8, specular: 0x223355 })
+      )
+      globe.add(earth)
+      // atmosphere shell
+      const atmo = new THREE.Mesh(
+        new THREE.SphereGeometry(1.06, 48, 48),
+        new THREE.MeshBasicMaterial({ color: 0x2f8cff, transparent: true, opacity: 0.12, side: THREE.BackSide })
+      )
+      globe.add(atmo)
     })
 
-    const draw = () => {
-      t += 0.0035
-      const w = cv.width, h = cv.height
-      ctx.clearRect(0, 0, w, h)
-      const cx = w / 2, cy = h / 2, R = Math.min(w, h) * 0.42
-      const tilt = 0.35
-
-      const rot = (p, ang) => {
-        const x = p.x * Math.cos(ang) - p.z * Math.sin(ang)
-        const z = p.x * Math.sin(ang) + p.z * Math.cos(ang)
-        const y = p.y * Math.cos(tilt) - z * Math.sin(tilt)
-        const z2 = p.y * Math.sin(tilt) + z * Math.cos(tilt)
-        return { x, y, z: z2 }
-      }
-
-      // sphere dots
-      for (const p of pts) {
-        const q = rot(p, t)
-        if (q.z < -0.15) continue
-        const px = cx + q.x * R, py = cy - q.y * R
-        const a = 0.15 + ((q.z + 1) / 2) * 0.65
-        const sz = (0.7 + p.s * 1.1) * (q.z > 0 ? 1.15 : 0.8)
-        ctx.fillStyle = `rgba(110,180,255,${a})`
-        ctx.beginPath(); ctx.arc(px, py, sz * DPR * 0.9, 0, 7); ctx.fill()
-      }
-      // rim glow
-      ctx.strokeStyle = 'rgba(87,217,255,0.18)'
-      ctx.lineWidth = DPR
-      ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.stroke()
-
-      // beacons
-      for (const b of beacons) {
-        const q = rot(b, t)
-        if (q.z < -0.1) continue
-        const px = cx + q.x * R, py = cy - q.y * R
-        const pulse = 2 + Math.sin(t * 6 + b.lon) * 1.2
-        const front = q.z > 0
-        // glow ring
-        ctx.strokeStyle = b.color + (front ? 'cc' : '44')
-        ctx.lineWidth = 1.2 * DPR
-        ctx.beginPath(); ctx.arc(px, py, (5 + pulse) * DPR, 0, 7); ctx.stroke()
-        ctx.fillStyle = b.color
-        ctx.beginPath(); ctx.arc(px, py, 2.4 * DPR, 0, 7); ctx.fill()
-        // label when front-facing
-        if (front && q.z > 0.35) {
-          ctx.font = `${9 * DPR}px system-ui`
-          ctx.fillStyle = b.color + 'ee'
-          ctx.textAlign = 'center'
-          ctx.fillText(b.label, px, py - 10 * DPR)
-        }
-      }
-      raf = requestAnimationFrame(draw)
+    // drag to rotate
+    let dragging = false, px = 0, py = 0, vx = 0, vy = 0
+    const dom = renderer.domElement
+    dom.style.cursor = 'grab'
+    const down = e => { dragging = true; px = e.clientX; py = e.clientY; dom.style.cursor = 'grabbing' }
+    const move = e => {
+      if (!dragging) return
+      const dx = e.clientX - px, dy = e.clientY - py
+      px = e.clientX; py = e.clientY
+      globe.rotation.y += dx * 0.008
+      globe.rotation.x = Math.max(-0.6, Math.min(0.6, globe.rotation.x + dy * 0.005))
+      vx = dx * 0.008; vy = dy * 0.005
     }
-    draw()
-    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize) }
+    const up = () => { dragging = false; dom.style.cursor = 'grab' }
+    dom.addEventListener('pointerdown', down)
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+
+    const resize = () => {
+      const w = el.clientWidth, h = el.clientHeight
+      renderer.setSize(w, h, false)
+      camera.aspect = w / h
+      camera.updateProjectionMatrix()
+    }
+    resize()
+    const ro = new ResizeObserver(resize)
+    ro.observe(el)
+
+    let raf
+    const loop = () => {
+      raf = requestAnimationFrame(loop)
+      if (!dragging) {
+        globe.rotation.y += 0.0016 + vx * 0.15 // auto-spin + inertia
+        globe.rotation.x += vy * 0.1
+        vx *= 0.94; vy *= 0.94
+        globe.rotation.x = Math.max(-0.6, Math.min(0.6, globe.rotation.x))
+      }
+      renderer.render(scene, camera)
+    }
+    loop()
+
+    return () => {
+      cancelAnimationFrame(raf)
+      ro.disconnect()
+      dom.removeEventListener('pointerdown', down)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      renderer.dispose()
+      el.removeChild(dom)
+    }
   }, [])
-  return <canvas ref={ref} className="globe-canvas" />
+  return <div ref={ref} className="globe-canvas" />
 }
