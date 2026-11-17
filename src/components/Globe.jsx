@@ -131,18 +131,12 @@ export default function GlobePanel() {
     const ro = new ResizeObserver(resize)
     ro.observe(el)
 
-    // real-time earth rotation: 360° per 24h UTC, locked to actual time
-    // LON_OFFSET calibrates texture prime-meridian alignment (radians)
-    const LON_OFFSET = 0
-    const earthAngle = () => {
-      const now = new Date()
-      const utcH = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600
-      return utcH * 15 * D2R + LON_OFFSET
-    }
+    let spin = 0
     let raf
     const loop = () => {
       raf = requestAnimationFrame(loop)
-      globe.rotation.y = earthAngle() + userRot.y
+      spin += 0.0016 // free auto-rotation
+      globe.rotation.y = spin + userRot.y
       globe.rotation.x = userRot.x
       renderer.render(scene, camera)
     }
