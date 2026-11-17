@@ -39,6 +39,53 @@ export default function GlobePanel() {
       globe.add(atmo)
     })
 
+    // location markers group
+    const markerGroup = new THREE.Group()
+    globe.add(markerGroup)
+    const markerObjs = []
+    const D2R = Math.PI / 180
+    const makeLabel = text => {
+      const cv = document.createElement('canvas'); cv.width = 256; cv.height = 56
+      const c = cv.getContext('2d')
+      c.font = 'bold 26px system-ui'; c.textAlign = 'center'; c.textBaseline = 'middle'
+      c.fillStyle = '#7fd4ff'; c.shadowColor = '#57d9ff'; c.shadowBlur = 10
+      c.fillText(text.slice(0, 22), 128, 28)
+      const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace
+      const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }))
+      spr.scale.set(0.6, 0.13, 1)
+      return spr
+    }
+    const refreshMarkers = async () => {
+      let locs = []
+      try { locs = await window.jarvis.locationsList() } catch {}
+      markerObjs.forEach(o => markerGroup.remove(o))
+      markerObjs.length = 0
+      for (const l of locs || []) {
+        const phi = Math.PI / 2 - l.lat * D2R, theta = l.lon * D2R
+        const pos = new THREE.Vector3(
+          Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta)
+        ).multiplyScalar(1.01)
+        const pin = new THREE.Mesh(
+          new THREE.SphereGeometry(0.018, 12, 12),
+          new THREE.MeshBasicMaterial({ color: 0xff5d8f })
+        )
+        pin.position.copy(pos)
+        markerGroup.add(pin)
+        const ring = new THREE.Mesh(
+          new THREE.SphereGeometry(0.03, 12, 12),
+          new THREE.MeshBasicMaterial({ color: 0xff5d8f, transparent: true, opacity: 0.4 })
+        )
+        ring.position.copy(pos)
+        markerGroup.add(ring)
+        const spr = makeLabel(l.name || l.display || '📍')
+        spr.position.copy(pos).multiplyScalar(1.28)
+        markerGroup.add(spr)
+        markerObjs.push(pin, ring, spr)
+      }
+    }
+    refreshMarkers()
+    const locTimer = setInterval(refreshMarkers, 5000)
+
     // drag to rotate
     let dragging = false, px = 0, py = 0, vx = 0, vy = 0
     const dom = renderer.domElement
@@ -82,6 +129,7 @@ export default function GlobePanel() {
 
     return () => {
       cancelAnimationFrame(raf)
+      clearInterval(locTimer)
       ro.disconnect()
       dom.removeEventListener('pointerdown', down)
       window.removeEventListener('pointermove', move)

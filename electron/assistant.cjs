@@ -857,6 +857,24 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'mark_location',
+      description: 'Find a place and drop a marker on the 3D globe. Use for "show me X on globe", "mark my home/office".',
+      parameters: { type: 'object', properties: {
+        place: { type: 'string' }, label: { type: 'string', description: 'Optional custom label' },
+      }, required: ['place'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_locations',
+      description: 'List all saved globe markers.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'computer_use',
       description: 'Control the PC visually like a human: takes screenshots, decides clicks/typing, executes via mouse+keyboard. Use for GUI tasks in any app ("fill this form", "click that button").',
       parameters: { type: 'object', properties: {
@@ -900,6 +918,11 @@ const TOOLS = [
     },
   },
 ]
+
+// globe locations
+const locFile = () => path.join(require('electron').app.getPath('userData'), 'jarvis-locations.json')
+const loadLocs = () => { try { return JSON.parse(fs.readFileSync(locFile(), 'utf8')) } catch { return [] } }
+const saveLocs = l => { try { fs.writeFileSync(locFile(), JSON.stringify(l, null, 2)) } catch {} }
 
 // live activity feed for UI
 const activityLog = []
@@ -1492,6 +1515,23 @@ async function execTool(name, args, surface, ctx = {}) {
         const d = await r.json()
         return d.choices?.[0]?.message?.content?.trim() || 'Research failed.'
       }
+      case 'mark_location': {
+        const q = String(args.place || '')
+        const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`, {
+          headers: { 'User-Agent': 'JarvisAssistant/1.0' }, signal: AbortSignal.timeout(15000),
+        })
+        const d = await r.json()
+        if (!d.length) return `Could not find "${q}".`
+        const g = d[0]
+        const loc = { id: uid().slice(0, 8), name: args.label || g.display_name.split(',').slice(0, 2).join(','), lat: +g.lat, lon: +g.lon, display: g.display_name }
+        const locs = loadLocs()
+        if (!locs.find(l => l.display === loc.display)) { locs.push(loc); saveLocs(locs) }
+        return `Marked "${loc.name}" at ${loc.lat}, ${loc.lon}.`
+      }
+      case 'list_locations': {
+        const locs = loadLocs()
+        return locs.length ? locs.map(l => `- ${l.name} (${l.lat}, ${l.lon})`).join('\n') : 'No markers saved.'
+      }
       default:
         return `Unknown tool: ${name}`
     }
@@ -1632,4 +1672,5 @@ module.exports = {
   cancelJob: id => { const i = jobs.findIndex(j => j.id === id); if (i < 0) return false; const j = jobs[i]; jobs.splice(i, 1); saveJobs(); clearTimeout(jobTimers.get(j.id)); jobTimers.delete(j.id); return true },
   vaultList: () => Object.keys(loadVault()),
   getActivity: () => activityLog.slice(-30),
+  getLocations: () => loadLocs(),
 }
