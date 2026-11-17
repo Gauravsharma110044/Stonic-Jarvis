@@ -30,7 +30,7 @@ function seedState() {
     settings: {
       llmBaseUrl: 'https://integrate.api.nvidia.com/v1',
       llmApiKey: '',
-      llmModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      llmModel: 'nvidia/nemotron-3-ultra-550b-a55b',
       visionModel: 'nvidia/nemotron-3.5-super-vl-120b-a12b',
       demoActivity: true,
       voiceOutput: false,

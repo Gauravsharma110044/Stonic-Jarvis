@@ -1386,6 +1386,7 @@ const SYS_PROMPT = `You are Jarvis, a personal AI assistant running on the user'
 - If a tool fails, say what went wrong briefly.
 - You may also be reached via Slack on the user's phone — the same tools are available there.
 - For multi-step tasks, call update_plan first with your steps, then execute them.
+- Think step by step for complex requests; verify tool results before answering.
 - Use see_screen when the user refers to what's on their screen ("this error", "this window").
 - Use memory_save to remember facts/preferences; memory_recall to look things up.
 - For web tasks use the browser_* tools: browser_navigate → browser_snapshot → browser_click/browser_type → repeat. The browser is a real visible window the user can watch.`
@@ -1408,11 +1409,17 @@ async function agentLoop(text, surface, ctx = {}) {
   if (!llmApiKey) return null
   const db = await getDefaultBrowser()
   const sysPrompt = SYS_PROMPT + `\n\nUser context: Windows PC. Default web browser: ${db.name || 'unknown'}${db.exe ? ` (${db.exe})` : ''}. When asked to "open browser" or browse the web, use the default browser — do NOT assume Edge.` + memContext()
+  // inject recent conversation history so Jarvis has context
+  const histCh = ctx.channelId || 'd-jarvis'
+  const hist = (store.state.messages[histCh] || []).slice(-12)
+    .filter(m => !(m.userId !== 'jarvis' && m.text.trim() === text.trim()))
+    .map(m => ({ role: m.userId === 'jarvis' ? 'assistant' : 'user', content: m.text.slice(0, 2000) }))
   const messages = [
     { role: 'system', content: sysPrompt },
+    ...hist,
     { role: 'user', content: text },
   ]
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 10; i++) {
     const msg = await chatOnce(messages, TOOLS)
     if (!msg) return null
     messages.push(msg)
