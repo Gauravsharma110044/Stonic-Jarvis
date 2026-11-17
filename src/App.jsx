@@ -27,6 +27,8 @@ export default function App() {
   const [attachments, setAttachments] = useState([])
 
   const recRef = useRef(null)
+  const mediaRecRef = useRef(null)
+  const s2sRef = useRef(false)
   const streamRef = useRef(null)
   const audioCtxRef = useRef(null)
   const spokenRef = useRef(new Set())
@@ -58,6 +60,7 @@ export default function App() {
   const voiceOutput = !!state?.settings?.voiceOutput
   convoModeRef.current = !!state?.settings?.convoMode
   voiceOutputRef.current = voiceOutput
+  s2sRef.current = !!state?.settings?.s2sMode
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }) }, [messages.length, typing, listening])
 
@@ -68,6 +71,18 @@ export default function App() {
     fresh.forEach(m => spokenRef.current.add(m.id))
     const last = fresh[fresh.length - 1]
     if (!last) return
+    if (s2sRef.current) {
+      setSpeaking(true)
+      window.jarvis.voiceTts(last.text).then(r => {
+        const d = r?.data || r
+        if (d?.ok !== false && d?.audio) {
+          const audio = new Audio('data:' + (d.mime || 'audio/wav') + ';base64,' + d.audio)
+          audio.onended = () => setSpeaking(false); audio.onerror = () => setSpeaking(false)
+          audio.play().catch(() => setSpeaking(false))
+        } else setSpeaking(false)
+      }).catch(() => setSpeaking(false))
+      return
+    }
     window.speechSynthesis.cancel()
     const u = new SpeechSynthesisUtterance(last.text.replace(/[*`#]/g, ''))
     u.rate = 1.02
@@ -97,6 +112,7 @@ export default function App() {
 
   const toggleMic = useCallback(async () => {
     if (listening) {
+      if (mediaRecRef.current?.state === 'recording') { mediaRecRef.current.stop(); mediaRecRef.current = null; setListening(false); stopMicTracks(); return }
       recRef.current?.stop()
       setListening(false); setInterim('')
       stopMicTracks()
@@ -115,6 +131,28 @@ export default function App() {
       src.connect(an)
       setAnalyser(an)
 
+      if (s2sRef.current && window.MediaRecorder) {
+        const chunks = []
+        const mr = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : undefined })
+        mr.ondataavailable = e => { if (e.data.size) chunks.push(e.data) }
+        mr.onstop = async () => {
+          setListening(false); stopMicTracks()
+          try {
+            const blob = new Blob(chunks, { type: mr.mimeType || 'audio/webm' })
+            const buf = await blob.arrayBuffer()
+            let bin = ''; const bytes = new Uint8Array(buf)
+            for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192))
+            const b64 = btoa(bin)
+            const r = await window.jarvis.voiceStt(b64, mr.mimeType || 'audio/webm')
+            const txt = r?.data?.text || r?.text
+            if (txt) window.jarvis.sendMessage(CHANNEL_ID, txt)
+          } catch { flashError() }
+        }
+        mediaRecRef.current = mr
+        mr.start()
+        setListening(true)
+        return
+      }
       const rec = new SR()
       rec.lang = 'en-US'
       rec.interimResults = true

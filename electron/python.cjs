@@ -30,7 +30,10 @@ async function ensure() {
       JARVIS_LLM_BASE: store.state.settings.llmBaseUrl || 'https://integrate.api.nvidia.com/v1',
       JARVIS_MODEL: store.state.settings.llmModel || 'nvidia/nemotron-3-ultra-550b-a55b',
     }
-    proc = spawn('python', [pyPath()], { env, windowsHide: true, stdio: 'ignore' })
+    const fs = require('fs')
+    const py312 = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe')
+    const pyExe = process.env.JARVIS_PYTHON || (fs.existsSync(py312) ? py312 : 'python')
+    proc = spawn(pyExe, [pyPath()], { env, windowsHide: true, stdio: 'ignore' })
     proc.on('exit', () => { proc = null; ready = false })
     // wait for health (up to 15s)
     for (let i = 0; i < 30; i++) {

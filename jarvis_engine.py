@@ -144,6 +144,56 @@ def vision_reset():
     return {"ok": True}
 
 
+# ---------- Local speech-to-speech (faster-whisper + piper) ----------
+_whisper=None;_voice_path=None
+def _get_whisper():
+    global _whisper
+    if _whisper is None:
+        from faster_whisper import WhisperModel
+        _whisper=WhisperModel('tiny',device='cpu',compute_type='int8')
+    return _whisper
+def _get_voice():
+    global _voice_path
+    if _voice_path is None:
+        import os as _os,urllib.request
+        vd=_os.path.join(_os.path.expanduser('~'),'.cache','piper-voices');_os.makedirs(vd,exist_ok=True)
+        m=_os.path.join(vd,'en_US-lessac-medium.onnx')
+        if not _os.path.exists(m): urllib.request.urlretrieve('https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx',m)
+        _voice_path=m
+    return _voice_path
+class SttReq(BaseModel):
+    audio:str
+    mime:str='audio/webm'
+@app.post('/stt')
+async def stt(req:SttReq):
+    try:
+        import base64,tempfile,os as _os
+        model=_get_whisper()
+        suf='.wav' if 'wav' in req.mime else '.webm'
+        with tempfile.NamedTemporaryFile(suffix=suf,delete=False) as f:
+            f.write(base64.b64decode(req.audio));tmp=f.name
+        try:
+            segs,_=model.transcribe(tmp,beam_size=1,vad_filter=True)
+            text=' '.join(x.text.strip() for x in segs).strip()
+        finally: _os.unlink(tmp)
+        return {'ok':True,'text':text}
+    except Exception as e: return {'ok':False,'error':str(e)}
+class TtsReq(BaseModel):
+    text:str
+@app.post('/tts')
+async def tts(req:TtsReq):
+    try:
+        import base64,struct
+        text=req.text[:2000].strip()
+        if not text: return {'ok':False,'error':'empty text'}
+        from piper import PiperVoice
+        voice=PiperVoice.load(_get_voice())
+        pcm=b''.join(b''.join(c.audio_int16_bytes for c in voice.synthesize(text)))
+        sr=voice.config.sample_rate
+        hdr=b'RIFF'+struct.pack('<I',36+len(pcm))+b'WAVEfmt '+struct.pack('<IHHIIHH',16,1,1,sr,sr*2,2,16)+b'data'+struct.pack('<I',len(pcm))
+        return {'ok':True,'audio':base64.b64encode(hdr+pcm).decode(),'mime':'audio/wav'}
+    except Exception as e: return {'ok':False,'error':str(e)}
+
 @app.post("/analyze")
 async def analyze(req: ChatReq):
     """Deep analysis endpoint — longer reasoning pass for complex inputs."""

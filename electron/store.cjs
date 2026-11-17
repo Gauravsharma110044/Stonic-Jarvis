@@ -35,7 +35,7 @@ function seedState() {
       demoActivity: true,
       voiceOutput: false,
       convoMode: false,
-      defaultBrowser: '',
+      s2sMode: false,      defaultBrowser: '',
       slackBotToken: '',
       slackAppToken: '',
       slackEnabled: false,

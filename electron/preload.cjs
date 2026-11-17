@@ -26,5 +26,7 @@ contextBridge.exposeInMainWorld('jarvis', {
   activityGet: () => ipcRenderer.invoke('activity:get'),
   locationsList: () => ipcRenderer.invoke('locations:list'),
   routeGet: () => ipcRenderer.invoke('route:get'),
+  voiceStt: (audio, mime) => ipcRenderer.invoke('voice:stt', audio, mime),
+  voiceTts: (text) => ipcRenderer.invoke('voice:tts', text),
   updateCheck: () => ipcRenderer.invoke('update:check'),
 })

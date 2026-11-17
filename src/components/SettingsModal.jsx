@@ -132,6 +132,17 @@ export default function SettingsModal({ settings, slackStatus, onClose, onSave }
 
         <div className="toggle-row">
           <div>
+            <div style={{ fontWeight: 600 }}>Speech-to-speech mode</div>
+            <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>Local voice AI (whisper + piper) — speak, Jarvis replies with voice. Needs Python engine running.</div>
+          </div>
+          <label className="toggle">
+            <input type="checkbox" checked={!!form.s2sMode} onChange={e => set('s2sMode', e.target.checked)} />
+            <span className="slider" />
+          </label>
+        </div>
+
+        <div className="toggle-row">
+          <div>
             <div style={{ fontWeight: 600 }}>Demo activity</div>
             <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>Simulated teammate messages so the workspace feels alive.</div>
           </div>
