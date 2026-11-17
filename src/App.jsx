@@ -228,8 +228,9 @@ export default function App() {
           {section === 'home' && (<>
             <div className="home-grid">
               <section className="home-mid">
-                <JarvisCore state={coreState} analyser={analyser} size={170} />
+                <JarvisCore state={coreState} analyser={analyser} size={130} />
                 <div className="home-mid-sub">{coreState === 'idle' ? 'How can I assist you today?' : coreState}</div>
+                <div className="home-graph-box"><StatsPanel /></div>
               </section>
               <section className="home-right">
                 <div className="chat-scroll">
@@ -290,7 +291,6 @@ export default function App() {
             <ActivityFeed />
           </>)}
           {section === 'memory' && <MemoryPanel />}
-          {section === 'stats' && <StatsPanel />}
           {['apps', 'files', 'workspace'].includes(section) && <PlaceholderPanel kind={section} />}
         </main>
       </div>
