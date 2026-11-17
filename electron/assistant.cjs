@@ -867,6 +867,17 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'spawn_agent',
+      description: 'Spawn a specialist sub-agent for a task. Agents: researcher (web research/reports), coder (code/files/git), operator (PC/browser automation), analyst (data/system analysis).',
+      parameters: { type: 'object', properties: {
+        agent: { type: 'string', enum: ['researcher', 'coder', 'operator', 'analyst'] },
+        task: { type: 'string' },
+      }, required: ['agent', 'task'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'list_locations',
       description: 'List all saved globe markers.',
       parameters: { type: 'object', properties: {} },
@@ -1305,6 +1316,19 @@ async function execTool(name, args, surface, ctx = {}) {
         memAdd('facts', `sys_watch ${id}: ${metric} >= ${th}% every ${mins}m`)
         return `Watching ${metric} >= ${th}% every ${mins} min (id ${id}).`
       }
+      case 'spawn_agent': {
+        if ((ctx.depth || 0) >= 2) return 'Sub-agent depth limit reached.'
+        const ROLES = {
+          researcher: 'You are a research specialist. Use web_search, fetch_url, research tools. Produce thorough cited findings.',
+          coder: 'You are a coding specialist. Use file, git_cmd, run_command tools. Write clean code, run tests, verify.',
+          operator: 'You are a desktop automation specialist. Use computer_use, browser_*, mouse/keyboard tools to operate the PC.',
+          analyst: 'You are a data/system analyst. Use list_processes, disk_usage, sys tools, csv_summary, file analysis.',
+        }
+        const role = ROLES[String(args.agent)]
+        if (!role) return `Unknown agent "${args.agent}". Use: researcher, coder, operator, analyst.`
+        const r = await agentLoop(String(args.task), surface, { ...ctx, depth: (ctx.depth || 0) + 1, rolePrompt: role })
+        return `[${args.agent} agent result]\n${r || 'no result'}`
+      }
       case 'delegate_task': {
         if ((ctx.depth || 0) >= 2) return 'Delegation depth limit reached.'
         const r = await agentLoop(String(args.task), surface, { depth: (ctx.depth || 0) + 1 })
@@ -1571,7 +1595,7 @@ async function agentLoop(text, surface, ctx = {}) {
   const { llmApiKey } = store.state.settings
   if (!llmApiKey) return null
   const db = await getDefaultBrowser()
-  const sysPrompt = SYS_PROMPT + `\n\nUser context: Windows PC. Default web browser: ${db.name || 'unknown'}${db.exe ? ` (${db.exe})` : ''}. When asked to "open browser" or browse the web, use the default browser — do NOT assume Edge.` + memContext()
+  const sysPrompt = SYS_PROMPT + (ctx.rolePrompt ? `\n\n${ctx.rolePrompt}` : '') + `\n\nUser context: Windows PC. Default web browser: ${db.name || 'unknown'}${db.exe ? ` (${db.exe})` : ''}. When asked to "open browser" or browse the web, use the default browser — do NOT assume Edge.` + memContext()
   // inject recent conversation history so Jarvis has context
   const histCh = ctx.channelId || 'd-jarvis'
   const hist = (store.state.messages[histCh] || []).slice(-12)
