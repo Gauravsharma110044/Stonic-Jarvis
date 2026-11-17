@@ -932,6 +932,105 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'window_manage',
+      description: 'Manage windows: list open windows, focus a window by title, or close it.',
+      parameters: { type: 'object', properties: {
+        action: { type: 'string', enum: ['list', 'focus', 'close'] },
+        title: { type: 'string', description: 'Window title substring for focus/close' },
+      }, required: ['action'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'clipboard',
+      description: 'Get or set Windows clipboard text.',
+      parameters: { type: 'object', properties: {
+        action: { type: 'string', enum: ['get', 'set'] }, text: { type: 'string' },
+      }, required: ['action'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'translate_text',
+      description: 'Translate text to any language (free, no key).',
+      parameters: { type: 'object', properties: {
+        text: { type: 'string' }, lang: { type: 'string', description: 'Target language e.g. hi, es, fr, ja' },
+      }, required: ['text', 'lang'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'pdf_merge',
+      description: 'Merge multiple PDF files into one (comma-separated paths).',
+      parameters: { type: 'object', properties: { paths: { type: 'string' } }, required: ['paths'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_eml',
+      description: 'Read a .eml email file — sender, subject, date, body.',
+      parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'startup_list',
+      description: 'List programs that run at Windows startup (registry Run keys).',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'network_stats',
+      description: 'Show network adapter status, IPs, and connection counts.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'kill_process',
+      description: 'Kill a process by name or PID.',
+      parameters: { type: 'object', properties: {
+        name: { type: 'string' }, pid: { type: 'number' },
+      } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'verify_work',
+      description: 'Spawn analyst agent to verify a completed task actually worked.',
+      parameters: { type: 'object', properties: { claim: { type: 'string' } }, required: ['claim'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'snippet_save',
+      description: 'Save a reusable text snippet (e.g. email signature). Keys like ";sig".',
+      parameters: { type: 'object', properties: { key: { type: 'string' }, text: { type: 'string' } }, required: ['key', 'text'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'snippet_expand',
+      description: 'Expand a saved snippet into typed text or return it.',
+      parameters: { type: 'object', properties: {
+        key: { type: 'string' }, type_it: { type: 'boolean' },
+      }, required: ['key'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'list_locations',
       description: 'List all saved globe markers.',
       parameters: { type: 'object', properties: {} },
@@ -1609,6 +1708,96 @@ async function execTool(name, args, surface, ctx = {}) {
         const locs = loadLocs()
         if (!locs.find(l => l.display === loc.display)) { locs.push(loc); saveLocs(locs) }
         return `Marked "${loc.name}" at ${loc.lat}, ${loc.lon}.`
+      }
+      case 'window_manage': {
+        if (!desktop) return needDesktop()
+        if (args.action === 'list') {
+          const r = await psRun(`Get-Process | Where-Object { $_.MainWindowTitle } | Select-Object Id,ProcessName,MainWindowTitle | ConvertTo-Json -Compress`)
+          try {
+            const p = JSON.parse(r || '[]'); const arr = Array.isArray(p) ? p : [p]
+            return arr.map(w => `${w.ProcessName} [${w.Id}]: ${w.MainWindowTitle}`).join('\n') || 'No windows.'
+          } catch { return 'No windows found.' }
+        }
+        if (!args.title) return 'title required for focus/close.'
+        const esc = String(args.title).replace(/'/g, "''")
+        if (args.action === 'focus') {
+          await psRun(`$p = Get-Process | Where-Object { $_.MainWindowTitle -like '*${esc}*' } | Select-Object -First 1; if ($p) { Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.Interaction]::AppActivate($p.Id) }`)
+          return `Focused window matching "${args.title}".`
+        }
+        if (args.action === 'close') {
+          await psRun(`Get-Process | Where-Object { $_.MainWindowTitle -like '*${esc}*' } | ForEach-Object { $_.CloseMainWindow() | Out-Null }`)
+          return `Close sent to windows matching "${args.title}".`
+        }
+        return 'Unknown action.'
+      }
+      case 'clipboard': {
+        const { clipboard } = require('electron')
+        if (args.action === 'get') return clipboard.readText() || '(empty)'
+        clipboard.writeText(String(args.text || ''))
+        return 'Copied to clipboard.'
+      }
+      case 'translate_text': {
+        const r = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(args.text)}&langpair=en|${encodeURIComponent(args.lang)}`, { signal: AbortSignal.timeout(15000) })
+        const d = await r.json()
+        return d.responseData?.translatedText || 'Translation failed.'
+      }
+      case 'pdf_merge': {
+        const { PDFDocument } = require('pdf-lib')
+        const files = String(args.paths).split(',').map(s => resolvePath(s.trim())).filter(Boolean)
+        const out = await PDFDocument.create()
+        for (const f of files) {
+          const src = await PDFDocument.load(fs.readFileSync(f))
+          const pages = await out.copyPages(src, src.getPageIndices())
+          pages.forEach(p => out.addPage(p))
+        }
+        const merged = path.join(require('electron').app.getPath('desktop'), `merged-${Date.now()}.pdf`)
+        fs.writeFileSync(merged, await out.save())
+        return `Merged ${files.length} PDFs → ${merged}`
+      }
+      case 'read_eml': {
+        const raw = fs.readFileSync(resolvePath(args.path), 'utf8')
+        const head = raw.slice(0, raw.indexOf('\n\n') > 0 ? raw.indexOf('\n\n') : 3000)
+        const get = h => (head.match(new RegExp(`^${h}:\\s*(.+)$`, 'im')) || [])[1]?.trim()
+        const bodyStart = raw.indexOf('\n\n')
+        const body = raw.slice(bodyStart + 2).replace(/=\r?\n/g, '').replace(/=([0-9A-F]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16))).slice(0, 4000)
+        return `From: ${get('From')}\nSubject: ${get('Subject')}\nDate: ${get('Date')}\n\n${body}`
+      }
+      case 'startup_list': {
+        const r = await psRun(`Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -ErrorAction SilentlyContinue | Select-Object * -ExcludeProperty PS* | ConvertTo-Json -Compress`)
+        try {
+          const o = JSON.parse(r || '{}'); const arr = Array.isArray(o) ? o : [o]
+          return arr.map(x => Object.entries(x).filter(([k]) => !k.startsWith('PS')).map(([k, v]) => `${k} → ${v}`).join('\n')).join('\n') || 'No startup items.'
+        } catch { return r || 'No startup items.' }
+      }
+      case 'network_stats': {
+        const r = await psRun(`Get-NetAdapter | Where-Object Status -eq 'Up' | Select-Object Name,InterfaceDescription,LinkSpeed | ConvertTo-Json -Compress; (Get-NetTCPConnection -State Established -ErrorAction SilentlyContinue | Measure-Object).Count`)
+        return r || 'No network info.'
+      }
+      case 'kill_process': {
+        if (!desktop) return needDesktop()
+        const target = args.pid ? `-Id ${+args.pid}` : `-Name "${String(args.name || '').replace(/"/g, '')}"`
+        await psRun(`Stop-Process ${target} -Force -ErrorAction SilentlyContinue`)
+        return `Kill sent to ${args.pid ? `PID ${args.pid}` : args.name}.`
+      }
+      case 'verify_work': {
+        const r = await agentLoop(`Verify this claim is actually true by checking evidence (files, commands, state): "${args.claim}". Reply VERIFIED or FAILED + one-line reason.`, surface, { ...ctx, depth: (ctx.depth || 0) + 1, agent: 'verifier', rolePrompt: 'You are a skeptical verification agent. Check facts with tools before confirming.' })
+        return `Verification: ${r || 'could not verify'}`
+      }
+      case 'snippet_save': {
+        const f = memFile()
+        const data = JSON.parse(fs.readFileSync(f, 'utf8'))
+        data.snippets = data.snippets || {}
+        data.snippets[args.key] = args.text
+        fs.writeFileSync(f, JSON.stringify(data, null, 2))
+        return `Snippet "${args.key}" saved.`
+      }
+      case 'snippet_expand': {
+        const f = memFile()
+        const data = JSON.parse(fs.readFileSync(f, 'utf8'))
+        const t = data.snippets?.[args.key]
+        if (!t) return `No snippet "${args.key}".`
+        if (args.type_it) { await psTypeText(t); return `Typed snippet "${args.key}".` }
+        return t
       }
       case 'list_locations': {
         const locs = loadLocs()
