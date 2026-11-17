@@ -228,7 +228,7 @@ export default function App() {
           {section === 'home' && (
             <div className="home-grid">
               <aside className="home-left">
-                <GlobePanel />
+                <div className="globe-wrap"><GlobePanel /></div>
                 <ActivityFeed />
               </aside>
               <section className="home-mid">
