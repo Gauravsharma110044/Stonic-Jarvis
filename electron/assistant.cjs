@@ -1053,6 +1053,81 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'media_control',
+      description: 'Control media playback: play/pause/next/previous/stop (system-wide media keys).',
+      parameters: { type: 'object', properties: {
+        action: { type: 'string', enum: ['play_pause', 'next', 'previous', 'stop'] },
+      }, required: ['action'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'system_dashboard',
+      description: 'Live system stats: CPU, RAM, disk, uptime, top processes.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'clipboard_history',
+      description: 'Show recent clipboard copies (last 15).',
+      parameters: { type: 'object', properties: { action: { type: 'string', enum: ['list'] } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'organize_folder',
+      description: 'Auto-sort files in a folder into subfolders by type (images, docs, videos, archives, code, other).',
+      parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'disk_cleanup',
+      description: 'Scan temp/cache folders for cleanable space. mode=scan (report) or clean (delete temp files).',
+      parameters: { type: 'object', properties: {
+        mode: { type: 'string', enum: ['scan', 'clean'] },
+      } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'power_mode',
+      description: 'Switch Windows power plan: balanced, power_saver, high_performance.',
+      parameters: { type: 'object', properties: {
+        mode: { type: 'string', enum: ['balanced', 'power_saver', 'high_performance'] },
+      }, required: ['mode'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'knowledge_search',
+      description: 'Search inside a folder\'s text files (notes, docs, code) for keywords — lightweight local knowledge base.',
+      parameters: { type: 'object', properties: {
+        folder: { type: 'string' }, query: { type: 'string' },
+      }, required: ['folder', 'query'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'request_approval',
+      description: 'Ask the user to approve a sensitive pending action (delete, send, purchase, system change). Call this instead of executing directly when unsure.',
+      parameters: { type: 'object', properties: {
+        action: { type: 'string', description: 'What will be done' },
+        tool: { type: 'string' }, args: { type: 'string', description: 'JSON string of tool args' },
+      }, required: ['action', 'tool', 'args'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'list_locations',
       description: 'List all saved globe markers.',
       parameters: { type: 'object', properties: {} },
@@ -1110,6 +1185,25 @@ const locFile = () => path.join(require('electron').app.getPath('userData'), 'ja
 const loadLocs = () => { try { return JSON.parse(fs.readFileSync(locFile(), 'utf8')) } catch { return [] } }
 const saveLocs = l => { try { fs.writeFileSync(locFile(), JSON.stringify(l, null, 2)) } catch {} }
 
+// approval queue + clipboard history + audit log
+const pendingApprovals = []
+const clipHistory = []
+const auditFile = () => path.join(require('electron').app.getPath('userData'), 'jarvis-audit.log')
+function audit(text) {
+  try { fs.appendFileSync(auditFile(), `${new Date().toISOString()} ${text}\n`) } catch {}
+}
+// clipboard polling (Electron main process)
+try {
+  const { clipboard } = require('electron')
+  let lastClip = ''
+  setInterval(() => {
+    try {
+      const t = clipboard.readText()
+      if (t && t !== lastClip && t.length < 5000) { clipHistory.push(t); if (clipHistory.length > 20) clipHistory.shift(); lastClip = t }
+    } catch {}
+  }, 3000)
+} catch {}
+
 // live activity feed for UI
 const activityLog = []
 function logActivity(text) {
@@ -1122,6 +1216,7 @@ async function execTool(name, args, surface, ctx = {}) {
   const needDesktop = () => 'This action only works when the user is on their PC (Slack is remote-only for safety).'
   const tag = ctx.agent ? `[${ctx.agent}] ` : ''
   logActivity(`${tag}${name} ${JSON.stringify(args || {}).slice(0, 80)}`)
+  audit(`${surface} ${tag}${name} ${JSON.stringify(args || {}).slice(0, 200)}`)
   try {
     switch (name) {
       case 'open_app': {
@@ -1863,6 +1958,64 @@ async function execTool(name, args, surface, ctx = {}) {
         if (!r.ok) return `Python engine error: ${r.error}`
         return JSON.stringify(r.data || r.reply || r.analysis || r, null, 1).slice(0, 6000)
       }
+      case 'media_control': {
+        if (!desktop) return needDesktop()
+        const keys = { play_pause: '{MEDIA_PLAY_PAUSE}', next: '{MEDIA_NEXT_TRACK}', previous: '{MEDIA_PREV_TRACK}', stop: '{MEDIA_STOP}' }
+        await psRun(`$ws = New-Object -ComObject WScript.Shell; $ws.SendKeys('${keys[args.action] || keys.play_pause}')`)
+        return `Media ${args.action} sent.`
+      }
+      case 'system_dashboard': {
+        const cpu = await psRun(`(Get-CimInstance Win32_Processor).LoadPercentage`)
+        const mem = await psRun(`$o=Get-CimInstance Win32_OperatingSystem; [math]::Round(($o.TotalVisibleMemorySize-$o.FreePhysicalMemory)/$o.TotalVisibleMemorySize*100)`)
+        const up = await psRun(`(Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime | ForEach-Object { "$($_.Days)d $($_.Hours)h" }`)
+        const top = await psRun(`Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 Name,CPU | ConvertTo-Json -Compress`)
+        return `CPU: ${cpu?.trim() ?? '?'}% | RAM: ${mem?.trim() ?? '?'}% used | Uptime: ${up?.trim()}\nTop CPU: ${top?.slice(0, 400)}`
+      }
+      case 'clipboard_history': {
+        return clipHistory.length ? [...clipHistory].reverse().slice(0, 15).map((c, i) => `${i + 1}. ${c.slice(0, 80)}`).join('\n') : 'Clipboard history empty.'
+      }
+      case 'organize_folder': {
+        if (!desktop) return needDesktop()
+        const dir = resolvePath(args.path)
+        const groups = {
+          Images: '\\.jpg|\\.jpeg|\\.png|\\.gif|\\.webp|\\.bmp', Docs: '\\.pdf|\\.docx?|\\.txt|\\.md|\\.rtf',
+          Videos: '\\.mp4|\\.mkv|\\.avi|\\.mov|\\.webm', Audio: '\\.mp3|\\.wav|\\.flac|\\.ogg',
+          Archives: '\\.zip|\\.rar|\\.7z|\\.tar|\\.gz', Code: '\\.js|\\.ts|\\.py|\\.html|\\.css|\\.json|\\.jsx|\\.tsx',
+        }
+        const psGroups = Object.entries(groups).map(([n, re]) => `$${n}='${re}'`).join(';')
+        const r = await psRun(`$dir='${dir.replace(/'/g, "''")}'; ${psGroups}; Get-ChildItem $dir -File | ForEach-Object { $n=$_.Name; $dest='Other'; foreach($g in '${Object.keys(groups).join('|')}'){ if($n -match (Get-Variable $g -ValueOnly)){ $dest=$g; break } }; $t=Join-Path $dir $dest; if(!(Test-Path $t)){New-Item -ItemType Directory -Path $t|Out-Null}; Move-Item $_.FullName $t -Force }; 'organized'`)
+        return `Folder organized: ${dir} (Images/Docs/Videos/Audio/Archives/Code/Other)`
+      }
+      case 'disk_cleanup': {
+        const targets = ['$env:TEMP', "$env:LOCALAPPDATA\\Temp"]
+        if (args.mode === 'clean') {
+          await psRun(`Remove-Item "$env:TEMP\\*" -Recurse -Force -ErrorAction SilentlyContinue; 'cleaned'`)
+          return 'Temp files cleaned.'
+        }
+        const sizes = await psRun(`@('${targets[0]}','${targets[1]}') | ForEach-Object { if(Test-Path $_){ $s=(Get-ChildItem $_ -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum; "$_ = $([math]::Round($s/1MB)) MB" } }`)
+        return `Cleanable space:\n${sizes || 'none'}`
+      }
+      case 'power_mode': {
+        const plans = { balanced: '381b4222-f694-41f0-9685-ff5bb260df2e', power_saver: 'a1841308-3541-4fab-bc81-f71556f20b4a', high_performance: '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c' }
+        await psRun(`powercfg /setactive ${plans[args.mode]}`)
+        return `Power plan → ${args.mode}.`
+      }
+      case 'knowledge_search': {
+        const dir = resolvePath(args.folder)
+        const q = String(args.query).toLowerCase()
+        const r = await psRun(`Get-ChildItem '${dir.replace(/'/g, "''")}' -Recurse -Include *.txt,*.md,*.js,*.ts,*.json,*.csv -File -ErrorAction SilentlyContinue | Select-String -Pattern '${q.replace(/'/g, "''")}' -List | Select-Object -First 10 Path,LineNumber | ConvertTo-Json -Compress`, 30000)
+        try {
+          const m = JSON.parse(r || '[]'); const arr = Array.isArray(m) ? m : [m]
+          return arr.filter(x => x.Path).map(x => `${x.Path}:${x.LineNumber}`).join('\n') || 'No matches.'
+        } catch { return r?.slice(0, 2000) || 'No matches.' }
+      }
+      case 'request_approval': {
+        let a = {}
+        try { a = JSON.parse(args.args || '{}') } catch {}
+        pendingApprovals.push({ tool: args.tool, args: a, surface, ctx: { ...ctx }, action: args.action, ts: Date.now() })
+        if (pendingApprovals.length > 10) pendingApprovals.shift()
+        return `APPROVAL_REQUIRED: "${args.action}". Ask the user to confirm (yes/no). The action is queued — do NOT claim it was done.`
+      }
       case 'list_locations': {
         const locs = loadLocs()
         return locs.length ? locs.map(l => `- ${l.name} (${l.lat}, ${l.lon})`).join('\n') : 'No markers saved.'
@@ -2032,7 +2185,8 @@ async function agentLoop(text, surface, ctx = {}) {
       let args = {}
       try { args = JSON.parse(call.function.arguments || '{}') } catch {}
       const result = await execTool(call.function.name, args, surface, ctx)
-      const rs = String(result)
+      // prompt-injection guard: strip instruction-like content from tool output
+      const rs = String(result).replace(/(ignore (all |any )?(previous|prior) instructions|system prompt|you are now|new instructions?:)/gi, '[filtered]')
       if (/^(Tool error|.*failed|.*error)/i.test(rs) && rs.length < 300) {
         toolErrors.push(`${call.function.name}: ${rs.slice(0, 120)}`)
         failCounts[call.function.name] = (failCounts[call.function.name] || 0) + 1
@@ -2069,6 +2223,20 @@ async function plainReply(text) {
 async function handleMessage(text, surface, ctx = {}) {
   const trimmed = text.trim()
   if (!trimmed) return null
+
+  // approval flow: "yes"/"confirm" executes last pending action
+  if (/^(yes|yeah|yep|confirm|ok|haan|ha|sure|go ahead|proceed)[!. ]*$/i.test(trimmed) && pendingApprovals.length) {
+    const p = pendingApprovals.shift()
+    logActivity(`approval granted: ${p.action}`)
+    try {
+      const result = await execTool(p.tool, p.args, p.surface, p.ctx)
+      return `Done — ${p.action}\n${String(result).slice(0, 500)}`
+    } catch (e) { return `Approved but failed: ${e.message}` }
+  }
+  if (/^(no|nope|nahi|cancel|reject|stop)[!. ]*$/i.test(trimmed) && pendingApprovals.length) {
+    const p = pendingApprovals.shift()
+    return `Cancelled: ${p.action}`
+  }
 
   if (trimmed.startsWith('/')) {
     const reply = await handleCommand(trimmed, surface)

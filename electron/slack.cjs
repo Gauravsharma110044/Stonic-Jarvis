@@ -54,6 +54,11 @@ async function replyViaSlack(text, say, event) {
   if (event && app?.client) {
     app.client.reactions.add({ channel: event.channel, timestamp: event.ts, name: 'eyes' }).catch(() => {})
   }
+  const allowed = String(store.state.settings.slackAllowedUsers || '').split(',').map(s => s.trim()).filter(Boolean)
+  if (allowed.length && event?.user && !allowed.includes(event.user)) {
+    await say('⛔ Not authorized on Jarvis.').catch(() => {})
+    return
+  }
   const reply = await assistant.handleMessage(text, 'slack')
   if (reply) {
     await say({ text: reply, mrkdwn: true })
