@@ -99,6 +99,19 @@ app.whenReady().then(() => {
   ipcMain.handle('activity:get', () => assistant.getActivity())
   ipcMain.handle('locations:list', () => assistant.getLocations())
   ipcMain.handle('route:get', () => assistant.getRoute())
+
+  // auto-start on Windows login
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: true,
+      args: app.isPackaged ? [] : [path.join(__dirname, '..')],
+    })
+  } catch (e) { console.warn('[autostart]', e.message) }
+  ipcMain.handle('autostart:get', () => app.getLoginItemSettings().openAtLogin)
+  ipcMain.handle('autostart:set', (_e, on) => {
+    app.setLoginItemSettings({ openAtLogin: !!on, args: app.isPackaged ? [] : [path.join(__dirname, '..')] })
+    return app.getLoginItemSettings().openAtLogin
+  })
   ipcMain.handle('window:minimize', () => win?.minimize())
   ipcMain.handle('window:maximize', () => {
     if (!win) return
