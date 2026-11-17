@@ -20,6 +20,7 @@
   "dependencies": {
     "@slack/bolt": "^4.2.0",
     "electron-updater": "^6.8.11",
+    "leaflet": "^1.9.4",
     "mammoth": "^1.13.0",
     "pdf-parse": "^1.1.1",
     "playwright": "^1.65.1",

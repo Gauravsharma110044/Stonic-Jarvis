@@ -1,21 +1,48 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef } from 'react'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 
 export default function MapPanel() {
-  const [src, setSrc] = useState('')
+  const ref = useRef(null)
+  const mapRef = useRef(null)
+  const layerRef = useRef(null)
+
   useEffect(() => {
-    let live = true
-    const load = async () => {
-      let lat = 28.61, lon = 77.21 // default: Delhi
-      try {
-        const locs = await window.jarvis.locationsList()
-        if (locs?.length) { lat = locs[0].lat; lon = locs[0].lon }
-      } catch {}
-      const d = 0.15
-      if (live) setSrc(`https://www.openstreetmap.org/export/embed.html?bbox=${lon - d},${lat - d},${lon + d},${lat + d}&layer=mapnik&marker=${lat},${lon}`)
+    if (!ref.current || mapRef.current) return
+    const map = L.map(ref.current, {
+      zoomControl: false,
+      attributionControl: false,
+      dragging: true,
+      scrollWheelZoom: true,
+      doubleClickZoom: false,
+      boxZoom: false,
+      keyboard: false,
+      touchZoom: true,
+    }).setView([28.61, 77.21], 5)
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+    }).addTo(map)
+
+    mapRef.current = map
+    const loadMarkers = async () => {
+      let locs = []
+      try { locs = await window.jarvis.locationsList() } catch {}
+      if (layerRef.current) map.removeLayer(layerRef.current)
+      const group = L.layerGroup()
+      for (const l of locs || []) {
+        L.circleMarker([l.lat, l.lon], {
+          radius: 6, color: '#ff5d8f', weight: 2, fillColor: '#ff5d8f', fillOpacity: 0.7,
+        }).bindTooltip(l.name || l.display || 'location', { permanent: false, direction: 'top' }).addTo(group)
+      }
+      group.addTo(map)
+      layerRef.current = group
+      if (locs?.length) map.setView([locs[0].lat, locs[0].lon], Math.max(map.getZoom(), 6), { animate: true })
     }
-    load()
-    const t = setInterval(load, 15000)
-    return () => { live = false; clearInterval(t) }
+    loadMarkers()
+    const t = setInterval(loadMarkers, 15000)
+    return () => { clearInterval(t); map.remove(); mapRef.current = null }
   }, [])
-  return src ? <iframe className="map-frame" src={src} title="map" loading="lazy" /> : <div className="map-frame map-loading">Loading map…</div>
+
+  return <div ref={ref} className="map-frame leaflet-map" />
 }
