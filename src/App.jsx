@@ -28,6 +28,8 @@ export default function App() {
 
   const recRef = useRef(null)
   const mediaRecRef = useRef(null)
+  const speakingAudioRef = useRef(null)
+  const vadRef = useRef(null)
   const s2sRef = useRef(false)
   const streamRef = useRef(null)
   const audioCtxRef = useRef(null)
@@ -72,15 +74,50 @@ export default function App() {
     const last = fresh[fresh.length - 1]
     if (!last) return
     if (s2sRef.current) {
+      // barge-in listener: speech during playback interrupts Jarvis
+      ;(async () => { try {
+        const bs = await navigator.mediaDevices.getUserMedia({ audio: true })
+        const bc = new (window.AudioContext || window.webkitAudioContext)()
+        const ba = bc.createAnalyser(); ba.fftSize = 512
+        bc.createMediaStreamSource(bs).connect(ba)
+        const bb = new Uint8Array(ba.fftSize)
+        const biv = setInterval(() => {
+          if (!speakingAudioRef.current) { clearInterval(biv); bs.getTracks().forEach(t => t.stop()); bc.close().catch(() => {}); return }
+          ba.getByteTimeDomainData(bb)
+          let sum = 0; for (let i = 0; i < bb.length; i += 4) { const v = (bb[i] - 128) / 128; sum += v * v }
+          if (Math.sqrt(sum / (bb.length / 4)) > 0.03) {
+            clearInterval(biv)
+            speakingAudioRef.current.stop?.()
+            bs.getTracks().forEach(t => t.stop()); bc.close().catch(() => {})
+          }
+        }, 150)
+      } catch {} })()
+      // streaming TTS: split into sentences, synthesize+play each chunk as it arrives
       setSpeaking(true)
-      window.jarvis.voiceTts(last.text).then(r => {
-        const d = r?.data || r
-        if (d?.ok !== false && d?.audio) {
-          const audio = new Audio('data:' + (d.mime || 'audio/wav') + ';base64,' + d.audio)
-          audio.onended = () => setSpeaking(false); audio.onerror = () => setSpeaking(false)
-          audio.play().catch(() => setSpeaking(false))
-        } else setSpeaking(false)
-      }).catch(() => setSpeaking(false))
+      const sentences = last.text.replace(/\n+/g, '. ').match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map(x => x.trim()).filter(Boolean) || [last.text]
+      const queue = [...sentences]
+      let stopped = false
+      speakingAudioRef.current = { stop: () => { stopped = true; try { window.jarvis.voiceTtsStop?.() } catch {} } }
+      ;(async () => {
+        while (queue.length && !stopped) {
+          const chunk = queue.shift()
+          try {
+            const r = await window.jarvis.voiceTts(chunk)
+            const d = r?.data || r
+            if (stopped) break
+            if (!d?.audio) continue
+            await new Promise(res => {
+              const audio = new Audio('data:' + (d.mime || 'audio/wav') + ';base64,' + d.audio)
+              speakingAudioRef.current.audio = audio
+              audio.onended = res; audio.onerror = res
+              audio.play().catch(res)
+              // barge-in: stop if flagged
+              const iv = setInterval(() => { if (stopped) { clearInterval(iv); audio.pause(); res() } }, 100)
+            })
+          } catch { /* skip failed chunk */ }
+        }
+        setSpeaking(false)
+      })()
       return
     }
     window.speechSynthesis.cancel()
@@ -112,7 +149,7 @@ export default function App() {
 
   const toggleMic = useCallback(async () => {
     if (listening) {
-      if (mediaRecRef.current?.state === 'recording') { mediaRecRef.current.stop(); mediaRecRef.current = null; setListening(false); stopMicTracks(); return }
+      if (mediaRecRef.current?.state === 'recording') { clearInterval(vadRef.current); vadRef.current = null; mediaRecRef.current.stop(); mediaRecRef.current = null; setListening(false); stopMicTracks(); return }
       recRef.current?.stop()
       setListening(false); setInterim('')
       stopMicTracks()
@@ -151,6 +188,22 @@ export default function App() {
         mediaRecRef.current = mr
         mr.start()
         setListening(true)
+        // VAD: auto-stop on ~1.2s trailing silence after speech
+        let heardSpeech = false, silentMs = 0, recStart = Date.now()
+        const vadBuf = new Uint8Array(analyser.fftSize || 2048)
+        vadRef.current = setInterval(() => {
+          try {
+            analyser.getByteTimeDomainData(vadBuf)
+            let sum = 0
+            for (let i = 0; i < vadBuf.length; i += 4) { const v = (vadBuf[i] - 128) / 128; sum += v * v }
+            const rms = Math.sqrt(sum / (vadBuf.length / 4))
+            if (rms > 0.015) { heardSpeech = true; silentMs = 0 } else silentMs += 120
+            if (heardSpeech && silentMs > 1200 && Date.now() - recStart > 600) {
+              clearInterval(vadRef.current); vadRef.current = null
+              if (mr.state === 'recording') mr.stop()
+            }
+          } catch { clearInterval(vadRef.current); vadRef.current = null }
+        }, 120)
         return
       }
       const rec = new SR()
