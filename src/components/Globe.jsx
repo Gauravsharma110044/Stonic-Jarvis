@@ -101,6 +101,15 @@ export default function GlobePanel() {
       globe.rotation.x = Math.max(-0.6, Math.min(0.6, globe.rotation.x + (e.clientY - py) * 0.005))
       px = e.clientX; py = e.clientY
     }
+    // zoom on scroll wheel
+    let zoom = 2.8
+    const onWheel = e => {
+      e.preventDefault()
+      zoom = Math.max(1.7, Math.min(5, zoom + e.deltaY * 0.004))
+      camera.position.z = zoom
+      camera.updateProjectionMatrix()
+    }
+    dom.addEventListener('wheel', onWheel, { passive: false })
     const up = () => { dragging = false; dom.style.cursor = 'grab' }
     dom.addEventListener('pointerdown', down)
     window.addEventListener('pointermove', move)
@@ -129,6 +138,7 @@ export default function GlobePanel() {
       clearInterval(locTimer); clearInterval(sunTimer)
       ro.disconnect()
       dom.removeEventListener('pointerdown', down)
+      dom.removeEventListener('wheel', onWheel)
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       renderer.dispose()
