@@ -1,7 +1,7 @@
 """Jarvis Python Intelligence Engine — FastAPI service on 127.0.0.1:8791
 Specialized AI processing: structured outputs, typed tasks, ML-ready endpoints.
 Communicates with NVIDIA OpenAI-compatible API (same key as JS side via env)."""
-import os, json, time
+import os, json, time, re
 from typing import Optional
 import httpx
 from fastapi import FastAPI
@@ -180,12 +180,26 @@ async def stt(req:SttReq):
     except Exception as e: return {'ok':False,'error':str(e)}
 class TtsReq(BaseModel):
     text:str
+    lang:str='auto'
+_DEV=re.compile(r'[\u0900-\u097F]')
+async def _edge_tts(text):
+    import edge_tts,io
+    buf=io.BytesIO()
+    comm=edge_tts.Communicate(text,'hi-IN-SwaraNeural')
+    async for chunk in comm.stream():
+        if chunk['type']=='audio': buf.write(chunk['data'])
+    return buf.getvalue()
 @app.post('/tts')
 async def tts(req:TtsReq):
     try:
         import base64,struct
         text=req.text[:2000].strip()
         if not text: return {'ok':False,'error':'empty text'}
+        # Hindi / Devanagari → natural edge-tts voice; else local piper
+        use_hi = req.lang.lower().startswith('hi') or (req.lang=='auto' and _DEV.search(text))
+        if use_hi:
+            mp3=await _edge_tts(text)
+            return {'ok':True,'audio':base64.b64encode(mp3).decode(),'mime':'audio/mpeg'}
         from piper import PiperVoice
         voice=PiperVoice.load(_get_voice())
         pcm=b''.join(b''.join(c.audio_int16_bytes for c in voice.synthesize(text)))
