@@ -107,6 +107,29 @@ function memContext() {
   return `\n\nWhat you remember about the user:\n${facts || '(none)'}\nLessons learned (avoid repeating mistakes):\n${lessons || '(none)'}`
 }
 
+// ---- per-agent memory (each sub-agent keeps its own learnings) ----
+const AGENT_ROLES = {
+  researcher: 'You are a research specialist. Use web_search, fetch_url, research tools. Produce thorough cited findings.',
+  coder: 'You are a coding specialist. Use file, git_cmd, run_command tools. Write clean code, run tests, verify.',
+  operator: 'You are a desktop automation specialist. Use computer_use, browser_*, mouse/keyboard tools to operate the PC.',
+  analyst: 'You are a data/system analyst. Use list_processes, disk_usage, sys tools, csv_summary, file analysis.',
+}
+function agentMem(agent) {
+  memory.agents ||= {}
+  const b = memory.agents[agent] ||= []
+  return b
+}
+function agentMemSave(agent, text) {
+  const b = agentMem(agent)
+  b.push({ ts: Date.now(), text: String(text).slice(0, 400) })
+  if (b.length > 100) b.splice(0, b.length - 100)
+  saveMem()
+}
+function agentMemContext(agent) {
+  const items = (memory.agents?.[agent] || []).slice(-10).map(x => `- ${x.text}`).join('\n')
+  return items ? `\n\nYour personal memory as ${agent} agent:\n${items}` : ''
+}
+
 // vault helpers
 const vaultFile = () => path.join(require('electron').app.getPath('userData'), 'jarvis-vault.json')
 const loadVault = () => { try { return JSON.parse(fs.readFileSync(vaultFile(), 'utf8')) } catch { return {} } }
@@ -878,6 +901,77 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'spawn_agents',
+      description: 'Spawn multiple specialist sub-agents IN PARALLEL for independent subtasks of a complex job. Use instead of sequential spawn_agent when tasks do not depend on each other.',
+      parameters: { type: 'object', properties: {
+        tasks: { type: 'array', items: { type: 'object', properties: {
+          agent: { type: 'string', enum: ['researcher', 'coder', 'operator', 'analyst'] },
+          task: { type: 'string' },
+        }, required: ['agent', 'task'] } },
+      }, required: ['tasks'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'window_tile',
+      description: 'Tile all open windows into a grid layout (like Windows Snap). mode: grid (equal tiles), left (two columns), or thirds.',
+      parameters: { type: 'object', properties: {
+        mode: { type: 'string', enum: ['grid', 'left', 'thirds'], description: 'grid=equal tiles, left=2 columns, thirds=3 columns' },
+      } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'sql_query',
+      description: 'Run a SQL query against a SQLite database file. Returns rows as text.',
+      parameters: { type: 'object', properties: {
+        path: { type: 'string', description: 'Path to .sqlite/.db/.sqlite3 file' },
+        query: { type: 'string' },
+      }, required: ['path', 'query'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'pdf_extract',
+      description: 'Extract text content from a PDF file.',
+      parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'pdf_split',
+      description: 'Split a PDF into a new PDF containing only the given pages (1-based, e.g. "1-3,5").',
+      parameters: { type: 'object', properties: {
+        path: { type: 'string' }, pages: { type: 'string' }, out: { type: 'string', description: 'Output path (optional)' },
+      }, required: ['path', 'pages'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'image_resize',
+      description: 'Resize or compress an image (jpg/png). Saves as <name>-resized.jpg next to original.',
+      parameters: { type: 'object', properties: {
+        path: { type: 'string' }, width: { type: 'number', description: 'Target width px (keeps aspect ratio)' },
+        quality: { type: 'number', description: 'JPEG quality 1-100 (default 85)' },
+      }, required: ['path'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'text_expand',
+      description: 'Type a saved snippet directly into the active window (text expander). Use key like "sig" or ";email".',
+      parameters: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'map_directions',
       description: 'Get driving/walking/cycling directions between two places (distance, duration, turn-by-turn).',
       parameters: { type: 'object', properties: {
@@ -1080,8 +1174,11 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'organize_folder',
-      description: 'Auto-sort files in a folder into subfolders by type (images, docs, videos, archives, code, other).',
-      parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+      description: 'Auto-sort files in a folder into subfolders by type (images, docs, videos, archives, code, other). dry_run=true only previews the plan without moving files.',
+      parameters: { type: 'object', properties: {
+        path: { type: 'string' },
+        dry_run: { type: 'boolean' },
+      }, required: ['path'] },
     },
   },
   {
@@ -1600,18 +1697,139 @@ async function execTool(name, args, surface, ctx = {}) {
       }
       case 'spawn_agent': {
         if ((ctx.depth || 0) >= 2) return 'Sub-agent depth limit reached.'
-        const ROLES = {
-          researcher: 'You are a research specialist. Use web_search, fetch_url, research tools. Produce thorough cited findings.',
-          coder: 'You are a coding specialist. Use file, git_cmd, run_command tools. Write clean code, run tests, verify.',
-          operator: 'You are a desktop automation specialist. Use computer_use, browser_*, mouse/keyboard tools to operate the PC.',
-          analyst: 'You are a data/system analyst. Use list_processes, disk_usage, sys tools, csv_summary, file analysis.',
-        }
-        const role = ROLES[String(args.agent)]
+        const role = AGENT_ROLES[String(args.agent)]
         if (!role) return `Unknown agent "${args.agent}". Use: researcher, coder, operator, analyst.`
         logActivity(`spawned ${args.agent} agent: ${String(args.task).slice(0, 60)}`)
         const r = await agentLoop(String(args.task), surface, { ...ctx, depth: (ctx.depth || 0) + 1, rolePrompt: role, agent: args.agent })
         logActivity(`${args.agent} agent finished`)
+        if (r && ctx.agent !== args.agent) agentMemSave(args.agent, `Task: ${String(args.task).slice(0, 150)} → ${String(r).slice(0, 200)}`)
         return `[${args.agent} agent result]\n${r || 'no result'}`
+      }
+      case 'spawn_agents': {
+        if ((ctx.depth || 0) >= 2) return 'Sub-agent depth limit reached.'
+        const tasks = Array.isArray(args.tasks) ? args.tasks.slice(0, 4) : []
+        if (!tasks.length) return 'Provide tasks: [{agent, task}, ...]'
+        logActivity(`spawning ${tasks.length} agents in parallel`)
+        const results = await Promise.all(tasks.map(async t => {
+          const name = String(t.agent || '')
+          const role = AGENT_ROLES[name]
+          if (!role) return `[${name}] unknown agent — use researcher/coder/operator/analyst`
+          logActivity(`spawned ${name} agent (parallel)`)
+          const r = await agentLoop(String(t.task || ''), surface, { ...ctx, depth: (ctx.depth || 0) + 1, rolePrompt: role, agent: name })
+          logActivity(`${name} agent finished`)
+          if (r) agentMemSave(name, `Task: ${String(t.task).slice(0, 150)} → ${String(r).slice(0, 200)}`)
+          return `[${name}] ${r || 'no result'}`
+        }))
+        return results.join('\n\n---\n\n')
+      }
+      case 'window_tile': {
+        if (!desktop) return needDesktop()
+        const mode = String(args.mode || 'grid')
+        const cols = mode === 'thirds' ? 3 : mode === 'left' ? 2 : 0
+        const perRowPS = cols > 0 ? String(cols) : '[math]::Ceiling([math]::Sqrt($n))'
+        // enumerate visible top-level windows and tile them
+        const script = `
+Add-Type @"
+using System;using System.Runtime.InteropServices;using System.Text;using System.Collections.Generic;
+public class WE{
+ [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb,IntPtr l);
+ [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+ [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h,StringBuilder s,int n);
+ [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+ [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out RECT r);
+ [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int ht,bool r);
+ [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
+ public delegate bool EnumProc(IntPtr h,IntPtr l);
+ public struct RECT{public int Left,Top,Right,Bottom;}
+}
+"@
+$wins=New-Object System.Collections.Generic.List[object]
+$cb=[WE+EnumProc]{ param($h,$l)
+ if([WE]::IsWindowVisible($h) -and -not [WE]::IsIconic($h)){
+  $sb=New-Object System.Text.StringBuilder 256;[void][WE]::GetWindowText($h,$sb,256)
+  $t=$sb.ToString(); if($t.Length -gt 0){$r=New-Object WE+RECT;[void][WE]::GetWindowRect($h,[ref]$r);$wins.Add(@{h=$h;t=$t;r=$r})}
+ }
+ return $true}
+[void][WE]::EnumWindows($cb,[IntPtr]::Zero)
+$sw=[System.Windows.Forms.SystemInformation]::VirtualScreen
+$list=@($wins | Where-Object {$_.t -notmatch 'Jarvis'})
+$n=$list.Count; if($n -eq 0){'no windows'}else{
+ $perRow=${perRowPS}
+ $cw=[int]($sw.Width/$perRow); $ch=[int]($sw.Height/[math]::Ceiling($n/$perRow))
+ for($i=0;$i -lt $n;$i++){$w=$list[$i];$col=$i%$perRow;$row=[int]($i/$perRow)
+  [void][WE]::MoveWindow($w.h,$sw.Left+$col*$cw,$sw.Top+$row*$ch,$cw,$ch,$$true)}
+ "tiled $n windows"}`
+        const r = await psRun(script, 20000)
+        return `Window tile (${mode}): ${r.output.trim() || r.error || 'done'}`
+      }
+      case 'sql_query': {
+        const py = require('./python.cjs')
+        const r = await py.call('/sql', { path: resolvePath(args.path), query: String(args.query || '') }, 30000)
+        if (!r?.ok) return `SQL error: ${r?.error || 'engine unavailable'}`
+        const rows = r.rows || []
+        if (!rows.length) return 'Query returned 0 rows.'
+        const cols = Object.keys(rows[0])
+        const lines = [cols.join(' | '), cols.map(() => '---').join('-+-')]
+        rows.slice(0, 100).forEach(row => lines.push(cols.map(c => String(row[c] ?? '')).join(' | ')))
+        if (rows.length > 100) lines.push(`… ${rows.length - 100} more rows`)
+        return lines.join('\n')
+      }
+      case 'pdf_extract': {
+        const pdfParse = require('pdf-parse')
+        const buf = fs.readFileSync(resolvePath(args.path))
+        const d = await pdfParse(buf)
+        return `PDF: ${path.basename(args.path)} — ${d.numpages} pages\n\n${String(d.text).slice(0, 6000)}`
+      }
+      case 'pdf_split': {
+        const { PDFDocument } = require('pdf-lib')
+        const src = await PDFDocument.load(fs.readFileSync(resolvePath(args.path)))
+        const total = src.getPageCount()
+        const wanted = []
+        String(args.pages).split(',').forEach(part => {
+          const m = part.trim().match(/^(\d+)(?:-(\d+))?$/)
+          if (m) { const a = +m[1], b = +(m[2] || m[1]); for (let i = a; i <= b; i++) if (i >= 1 && i <= total) wanted.push(i - 1) }
+        })
+        if (!wanted.length) return `No valid pages. PDF has ${total} pages.`
+        const out = await PDFDocument.create()
+        const pages = await out.copyPages(src, [...new Set(wanted)])
+        pages.forEach(p => out.addPage(p))
+        const outPath = args.out ? resolvePath(args.out) : resolvePath(args.path).replace(/\.pdf$/i, '') + `-p${args.pages.replace(/[^\d,-]/g, '')}.pdf`
+        fs.mkdirSync(path.dirname(outPath), { recursive: true })
+        fs.writeFileSync(outPath, await out.save())
+        return `Split ${wanted.length} page(s) → ${outPath}`
+      }
+      case 'image_resize': {
+        if (!desktop) return needDesktop()
+        const p = resolvePath(args.path)
+        if (!fs.existsSync(p)) return `File not found: ${p}`
+        const w = Math.round(+args.width || 0)
+        const q = Math.min(100, Math.max(10, +args.quality || 85))
+        if (!w) return 'Provide width in pixels.'
+        const out = p.replace(/\.[^.]+$/, '') + '-resized.jpg'
+        const script = `Add-Type -AssemblyName System.Drawing
+$src=[System.Drawing.Image]::FromFile('${p.replace(/'/g, "''")}')
+$h=[int]($src.Height*$w/$src.Width)
+$bmp=New-Object System.Drawing.Bitmap($w,$h)
+$g=[System.Drawing.Graphics]::FromImage($bmp)
+$g.InterpolationMode='HighQualityBicubic';$g.DrawImage($src,0,0,$w,$h)
+$enc=[System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders()|?{$_.MimeType -eq 'image/jpeg'}
+$ep=New-Object System.Drawing.Imaging.EncoderParameters(1)
+$ep.Param[0]=New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality,[long]${q})
+$bmp.Save('${out.replace(/'/g, "''")}',$enc,$ep)
+$g.Dispose();$bmp.Dispose();$src.Dispose()
+"resized ${w}x$h"`
+        const r = await psRun(script, 30000)
+        return r.output.includes('resized') ? `Image resized → ${out}` : `Resize failed: ${r.output || r.error}`
+      }
+      case 'text_expand': {
+        if (!desktop) return needDesktop()
+        const f = memFile()
+        const data = JSON.parse(fs.readFileSync(f, 'utf8'))
+        let t = data.snippets?.[args.key]
+        if (!t && String(args.key).startsWith(';')) t = data.snippets?.[String(args.key).slice(1)]
+        if (!t) return `No snippet "${args.key}". Save one first with snippet_save.`
+        await psTypeText(t)
+        return `Typed snippet "${args.key}".`
       }
       case 'delegate_task': {
         if ((ctx.depth || 0) >= 2) return 'Delegation depth limit reached.'
@@ -1660,12 +1878,16 @@ async function execTool(name, args, surface, ctx = {}) {
         return d.choices?.[0]?.message?.content?.trim() || 'Could not analyze screen.'
       }
       case 'memory_save': {
+        if (ctx.agent) { agentMemSave(ctx.agent, args.fact); return `Saved to ${ctx.agent} agent memory.` }
         memAdd('facts', args.fact)
         return 'Saved to memory.'
       }
       case 'memory_recall': {
         const q = String(args.query || '').toLowerCase()
-        const hits = [...(memory.facts || []), ...(memory.lessons || [])]
+        const pool = ctx.agent
+          ? (memory.agents?.[ctx.agent] || [])
+          : [...(memory.facts || []), ...(memory.lessons || [])]
+        const hits = pool
           .filter(f => f.text.toLowerCase().includes(q) || q.split(' ').some(w => w.length > 3 && f.text.toLowerCase().includes(w)))
           .slice(-20).map(f => `- ${f.text}`)
         return hits.length ? hits.join('\n') : 'Nothing found in memory.'
@@ -1988,14 +2210,31 @@ async function execTool(name, args, surface, ctx = {}) {
       case 'organize_folder': {
         if (!desktop) return needDesktop()
         const dir = resolvePath(args.path)
+        if (!fs.existsSync(dir)) return `Folder not found: ${dir}`
         const groups = {
-          Images: '\\.jpg|\\.jpeg|\\.png|\\.gif|\\.webp|\\.bmp', Docs: '\\.pdf|\\.docx?|\\.txt|\\.md|\\.rtf',
-          Videos: '\\.mp4|\\.mkv|\\.avi|\\.mov|\\.webm', Audio: '\\.mp3|\\.wav|\\.flac|\\.ogg',
-          Archives: '\\.zip|\\.rar|\\.7z|\\.tar|\\.gz', Code: '\\.js|\\.ts|\\.py|\\.html|\\.css|\\.json|\\.jsx|\\.tsx',
+          Images: /\.(jpe?g|png|gif|webp|bmp|svg)$/i, Docs: /\.(pdf|docx?|txt|md|rtf)$/i,
+          Videos: /\.(mp4|mkv|avi|mov|webm)$/i, Audio: /\.(mp3|wav|flac|ogg)$/i,
+          Archives: /\.(zip|rar|7z|tar|gz)$/i, Code: /\.(js|ts|py|html|css|json|jsx|tsx)$/i,
         }
-        const psGroups = Object.entries(groups).map(([n, re]) => `$${n}='${re}'`).join(';')
-        const r = await psRun(`$dir='${dir.replace(/'/g, "''")}'; ${psGroups}; Get-ChildItem $dir -File | ForEach-Object { $n=$_.Name; $dest='Other'; foreach($g in '${Object.keys(groups).join('|')}'){ if($n -match (Get-Variable $g -ValueOnly)){ $dest=$g; break } }; $t=Join-Path $dir $dest; if(!(Test-Path $t)){New-Item -ItemType Directory -Path $t|Out-Null}; Move-Item $_.FullName $t -Force }; 'organized'`)
-        return `Folder organized: ${dir} (Images/Docs/Videos/Audio/Archives/Code/Other)`
+        const plan = []
+        for (const f of fs.readdirSync(dir)) {
+          const fp = path.join(dir, f)
+          try { if (!fs.statSync(fp).isFile()) continue } catch { continue }
+          const dest = Object.entries(groups).find(([, re]) => re.test(f))?.[0] || 'Other'
+          plan.push({ file: f, dest })
+        }
+        if (args.dry_run) {
+          const byDest = {}
+          plan.forEach(p => { (byDest[p.dest] ||= []).push(p.file) })
+          return `Dry run — ${plan.length} files would move:\n` +
+            Object.entries(byDest).map(([d, fs_]) => `${d}/ (${fs_.length}): ${fs_.slice(0, 8).join(', ')}${fs_.length > 8 ? '…' : ''}`).join('\n')
+        }
+        for (const p of plan) {
+          const destDir = path.join(dir, p.dest)
+          fs.mkdirSync(destDir, { recursive: true })
+          try { fs.renameSync(path.join(dir, p.file), path.join(destDir, p.file)) } catch {}
+        }
+        return `Organized ${plan.length} files in ${dir} into type folders.`
       }
       case 'disk_cleanup': {
         const targets = ['$env:TEMP', "$env:LOCALAPPDATA\\Temp"]
@@ -2188,7 +2427,7 @@ async function agentLoop(text, surface, ctx = {}) {
   const { llmApiKey } = store.state.settings
   if (!llmApiKey) return null
   const db = await getDefaultBrowser()
-  const sysPrompt = SYS_PROMPT + (ctx.rolePrompt ? `\n\n${ctx.rolePrompt}` : '') + `\n\nUser context: Windows PC. Default web browser: ${db.name || 'unknown'}${db.exe ? ` (${db.exe})` : ''}. When asked to "open browser" or browse the web, use the default browser — do NOT assume Edge.` + memContext()
+  const sysPrompt = SYS_PROMPT + (ctx.rolePrompt ? `\n\n${ctx.rolePrompt}` : '') + `\n\nUser context: Windows PC. Default web browser: ${db.name || 'unknown'}${db.exe ? ` (${db.exe})` : ''}. When asked to "open browser" or browse the web, use the default browser — do NOT assume Edge.` + memContext() + (ctx.agent ? agentMemContext(ctx.agent) : '')
   // inject recent conversation history so Jarvis has context
   const histCh = ctx.channelId || 'd-jarvis'
   const hist = (store.state.messages[histCh] || []).slice(-12)
@@ -2306,6 +2545,8 @@ module.exports = {
   cancelJob: id => { const i = jobs.findIndex(j => j.id === id); if (i < 0) return false; const j = jobs[i]; jobs.splice(i, 1); saveJobs(); clearTimeout(jobTimers.get(j.id)); jobTimers.delete(j.id); return true },
   vaultList: () => Object.keys(loadVault()),
   getActivity: () => activityLog.slice(-30),
+  addJob: (when, text) => addJob(when, text, null, text),
+  getClipHistory: () => [...clipHistory].reverse().slice(0, 20),
   getLogs: () => {
     try {
       const lines = fs.readFileSync(auditFile(), 'utf8').trim().split('\n').slice(-400)

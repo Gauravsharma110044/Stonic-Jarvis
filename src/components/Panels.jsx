@@ -5,6 +5,8 @@ export function MemoryPanel() {
   const [mem, setMem] = useState({ facts: [], lessons: [], plans: [] })
   const [jobs, setJobs] = useState([])
   const [vault, setVault] = useState([])
+  const [jobWhen, setJobWhen] = useState('')
+  const [jobText, setJobText] = useState('')
   const load = () => {
     window.jarvis.notesList().then(setNotes)
     window.jarvis.memoryGet().then(setMem)
@@ -13,6 +15,11 @@ export function MemoryPanel() {
   }
   useEffect(load, [])
   const cancel = id => window.jarvis.jobCancel(id).then(load)
+  const addJob = async () => {
+    if (!jobWhen.trim() || !jobText.trim()) return
+    await window.jarvis.jobsAdd(jobWhen.trim(), jobText.trim())
+    setJobWhen(''); setJobText(''); load()
+  }
   const Section = ({ title, items, render }) => items.length > 0 && (
     <div style={{ marginTop: 18 }}>
       <h3 style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-faint)', marginBottom: 8 }}>{title}</h3>
@@ -31,6 +38,17 @@ export function MemoryPanel() {
         render={(f, i) => <div key={i} className="note-item">{f.text}</div>} />
       <Section title="Lessons learned" items={mem.lessons}
         render={(l, i) => <div key={i} className="note-item" style={{ opacity: .7 }}>avoid: {l.text}</div>} />
+      <div style={{ marginTop: 18 }}>
+        <h3 style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-faint)', marginBottom: 8 }}>Schedule a task</h3>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input value={jobWhen} onChange={e => setJobWhen(e.target.value)} placeholder="10m / 2h / every 30m"
+            style={{ width: 160, background: 'rgba(255,255,255,.04)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 12, padding: '7px 10px', fontFamily: 'inherit' }} />
+          <input value={jobText} onChange={e => setJobText(e.target.value)} placeholder="Task for Jarvis…" onKeyDown={e => e.key === 'Enter' && addJob()}
+            style={{ flex: 1, background: 'rgba(255,255,255,.04)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 12, padding: '7px 10px', fontFamily: 'inherit' }} />
+          <button className="btn btn-primary" style={{ padding: '7px 16px', fontSize: 12 }} onClick={addJob}>Add</button>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 5 }}>Runs an AI task at the scheduled time — result appears in chat.</div>
+      </div>
       <Section title="Scheduled jobs" items={jobs}
         render={j => (
           <div key={j.id} className="note-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

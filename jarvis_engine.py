@@ -208,6 +208,21 @@ async def tts(req:TtsReq):
         return {'ok':True,'audio':base64.b64encode(hdr+pcm).decode(),'mime':'audio/wav'}
     except Exception as e: return {'ok':False,'error':str(e)}
 
+class SqlReq(BaseModel):
+    path:str
+    query:str
+@app.post('/sql')
+def sql_query(req:SqlReq):
+    try:
+        import sqlite3
+        con=sqlite3.connect(req.path);con.row_factory=sqlite3.Row
+        try:
+            cur=con.execute(req.query)
+            rows=[dict(r) for r in cur.fetchall()]
+            return {'ok':True,'rows':rows,'count':len(rows)}
+        finally: con.close()
+    except Exception as e: return {'ok':False,'error':str(e)}
+
 @app.post("/analyze")
 async def analyze(req: ChatReq):
     """Deep analysis endpoint — longer reasoning pass for complex inputs."""

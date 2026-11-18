@@ -115,6 +115,8 @@ app.whenReady().then(() => {
   ipcMain.handle('voice:tts', async (_e, text) => require('./python.cjs').call('/tts', { text }))
   ipcMain.handle('activity:get', () => assistant.getActivity())
   ipcMain.handle('logs:get', () => assistant.getLogs())
+  ipcMain.handle('jobs:add', (_e, when, text) => assistant.addJob(when, text))
+  ipcMain.handle('clipboard:history', () => assistant.getClipHistory())
   ipcMain.handle('locations:list', () => assistant.getLocations())
   ipcMain.handle('route:get', () => assistant.getRoute())
 
