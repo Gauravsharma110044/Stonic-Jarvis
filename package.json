@@ -33,8 +33,9 @@
     "productName": "Jarvis",
     "publish": [
       {
-        "provider": "generic",
-        "url": "https://example.com/jarvis-updates/"
+        "provider": "github",
+        "owner": "Gauravsharma110044",
+        "repo": "Stonic-Jarvis"
       }
     ],
     "files": [
