@@ -321,7 +321,6 @@ export default function App() {
               <section className="home-mid">
                 <JarvisCore state={coreState} analyser={analyser} size={130} />
                 <div className="home-mid-sub">{coreState === 'idle' ? 'How can I assist you today?' : coreState}</div>
-                <div className="home-graph-box"><StatsPanel /></div>
               </section>
               <section className="home-right">
                 <div className="chat-scroll">
@@ -379,6 +378,7 @@ export default function App() {
                 />
               </section>
             </div>
+            <div className="bottom-graph"><StatsPanel /></div>
             <ActivityFeed />
           </>)}
           {section === 'memory' && <MemoryPanel />}
