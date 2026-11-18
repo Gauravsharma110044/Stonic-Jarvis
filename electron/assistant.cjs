@@ -2159,17 +2159,29 @@ const SYS_PROMPT = `You are Jarvis, a personal AI assistant running on the user'
 - Reason carefully before complex answers — think step by step internally, then give the direct answer.
 - For math, logic, planning, or multi-constraint problems, reason fully before responding — accuracy over speed.`
 
+// Nemotron reasoning models put the answer in reasoning_content when content is empty
+function normalizeMsg(msg) {
+  if (!msg) return msg
+  if (!msg.content && msg.reasoning_content) {
+    const r = String(msg.reasoning_content)
+    // take the tail — the final answer usually follows the last reasoning block
+    msg.content = r.split(/\n\n+/).slice(-2).join('\n\n') || r.slice(-2000)
+  }
+  if (msg.content) msg.content = String(msg.content)
+  return msg
+}
+
 async function chatOnce(messages, tools) {
   const { llmBaseUrl, llmApiKey, llmModel } = store.state.settings
   const res = await fetch(`${llmBaseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${llmApiKey}` },
-    body: JSON.stringify({ model: llmModel, messages, tools, tool_choice: 'auto', max_tokens: 4096 }),
-    signal: AbortSignal.timeout(90000),
+    body: JSON.stringify({ model: llmModel, messages, tools, tool_choice: 'auto', max_tokens: 8192 }),
+    signal: AbortSignal.timeout(120000),
   })
   if (!res.ok) throw new Error(`LLM HTTP ${res.status}`)
   const data = await res.json()
-  return data.choices?.[0]?.message || null
+  return normalizeMsg(data.choices?.[0]?.message || null)
 }
 
 async function agentLoop(text, surface, ctx = {}) {
@@ -2235,12 +2247,13 @@ async function plainReply(text) {
     const res = await fetch(`${llmBaseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${llmApiKey}` },
-      body: JSON.stringify({ model: llmModel, messages: [{ role: 'system', content: SYS_PROMPT }, { role: 'user', content: text }] }),
-      signal: AbortSignal.timeout(90000),
+      body: JSON.stringify({ model: llmModel, messages: [{ role: 'system', content: SYS_PROMPT }, { role: 'user', content: text }], max_tokens: 8192 }),
+      signal: AbortSignal.timeout(120000),
     })
     if (!res.ok) return null
     const data = await res.json()
-    return data.choices?.[0]?.message?.content?.trim() || null
+    const msg = normalizeMsg(data.choices?.[0]?.message)
+    return msg?.content?.trim() || null
   } catch { return null }
 }
 
