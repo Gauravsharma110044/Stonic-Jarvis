@@ -97,6 +97,7 @@ app.whenReady().then(() => {
   ipcMain.handle('voice:stt', async (_e, audioB64, mime) => require('./python.cjs').call('/stt', { audio: audioB64, mime }))
   ipcMain.handle('voice:tts', async (_e, text) => require('./python.cjs').call('/tts', { text }))
   ipcMain.handle('activity:get', () => assistant.getActivity())
+  ipcMain.handle('logs:get', () => assistant.getLogs())
   ipcMain.handle('locations:list', () => assistant.getLocations())
   ipcMain.handle('route:get', () => assistant.getRoute())
 

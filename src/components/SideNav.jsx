@@ -5,6 +5,7 @@ const ITEMS = [
   { id: 'apps', icon: '▦', label: 'Applications' },
   { id: 'files', icon: '▤', label: 'Files' },
   { id: 'workspace', icon: '◈', label: 'Workspace' },
+  { id: 'logs', icon: '≡', label: 'Logs' },
   { id: 'settings', icon: '⚙', label: 'Settings' },
 ]
 

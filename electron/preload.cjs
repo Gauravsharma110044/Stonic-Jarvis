@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('jarvis', {
   jobCancel: (id) => ipcRenderer.invoke('jobs:cancel', id),
   vaultList: () => ipcRenderer.invoke('vault:list'),
   activityGet: () => ipcRenderer.invoke('activity:get'),
+  logsGet: () => ipcRenderer.invoke('logs:get'),
   locationsList: () => ipcRenderer.invoke('locations:list'),
   routeGet: () => ipcRenderer.invoke('route:get'),
   voiceStt: (audio, mime) => ipcRenderer.invoke('voice:stt', audio, mime),

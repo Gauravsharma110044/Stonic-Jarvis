@@ -80,6 +80,36 @@ export default function SettingsModal({ settings, slackStatus, onClose, onSave }
           <div className="hint">Auto-update works in the installed app and needs a published update feed (latest.yml + installer on a static host or GitHub Releases).</div>
         </div>
 
+        <h3 style={{ fontSize: 13, margin: '16px 0 8px' }}>Appearance</h3>
+        <div className="field">
+          <label>Accent color</label>
+          <div className="accent-swatches">
+            {['#57d9ff', '#a78bfa', '#34d399', '#fbbf24', '#fb7185', '#f97316'].map(c => (
+              <button key={c} type="button" className={`swatch ${form.uiAccent === c ? 'active' : ''}`}
+                style={{ background: c }} onClick={() => set('uiAccent', c)} />
+            ))}
+            <input type="color" className="swatch-custom" value={form.uiAccent || '#57d9ff'}
+              onChange={e => set('uiAccent', e.target.value)} title="Custom color" />
+          </div>
+        </div>
+        <div className="field">
+          <label>Density</label>
+          <select value={form.uiDensity || 'comfortable'} onChange={e => set('uiDensity', e.target.value)}>
+            <option value="comfortable">Comfortable</option>
+            <option value="compact">Compact</option>
+          </select>
+        </div>
+        <div className="toggle-row">
+          <div>
+            <div style={{ fontWeight: 600 }}>Animations</div>
+            <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>Reactor pulses, message transitions, glow effects.</div>
+          </div>
+          <label className="toggle">
+            <input type="checkbox" checked={form.uiAnimations !== false} onChange={e => set('uiAnimations', e.target.checked)} />
+            <span className="slider" />
+          </label>
+        </div>
+
         <h3 style={{ fontSize: 13, margin: '16px 0 8px' }}>Slack bridge</h3>
         <div className="toggle-row">
           <div>

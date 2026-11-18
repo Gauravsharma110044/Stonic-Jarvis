@@ -2306,6 +2306,15 @@ module.exports = {
   cancelJob: id => { const i = jobs.findIndex(j => j.id === id); if (i < 0) return false; const j = jobs[i]; jobs.splice(i, 1); saveJobs(); clearTimeout(jobTimers.get(j.id)); jobTimers.delete(j.id); return true },
   vaultList: () => Object.keys(loadVault()),
   getActivity: () => activityLog.slice(-30),
+  getLogs: () => {
+    try {
+      const lines = fs.readFileSync(auditFile(), 'utf8').trim().split('\n').slice(-400)
+      return lines.map(l => {
+        const m = l.match(/^(\S+)\s+(.*)$/)
+        return m ? { ts: m[1], text: m[2] } : { ts: '', text: l }
+      }).reverse()
+    } catch { return [] }
+  },
   getLocations: () => loadLocs(),
   getRoute: () => { try { return JSON.parse(fs.readFileSync(path.join(require('electron').app.getPath('userData'), 'jarvis-route.json'), 'utf8')) } catch { return null } },
 }

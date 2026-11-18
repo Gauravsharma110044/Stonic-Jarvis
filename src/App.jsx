@@ -8,6 +8,7 @@ import ActivityFeed from './components/ActivityFeed.jsx'
 import SettingsModal from './components/SettingsModal.jsx'
 import { MemoryPanel, PlaceholderPanel } from './components/Panels.jsx'
 import StatsPanel from './components/StatsPanel.jsx'
+import LogsPanel from './components/LogsPanel.jsx'
 import { renderText } from './utils.jsx'
 
 const CHANNEL_ID = 'd-jarvis'
@@ -63,6 +64,16 @@ export default function App() {
   convoModeRef.current = !!state?.settings?.convoMode
   voiceOutputRef.current = voiceOutput
   s2sRef.current = !!state?.settings?.s2sMode
+
+  // ---- UI customization: accent color, density, animations ----
+  useEffect(() => {
+    const s = state?.settings
+    if (!s) return
+    const root = document.documentElement
+    root.style.setProperty('--cyan', s.uiAccent || '#57d9ff')
+    document.body.classList.toggle('density-compact', s.uiDensity === 'compact')
+    document.body.classList.toggle('no-animations', s.uiAnimations === false)
+  }, [state?.settings?.uiAccent, state?.settings?.uiDensity, state?.settings?.uiAnimations])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }) }, [messages.length, typing, listening])
 
@@ -382,6 +393,7 @@ export default function App() {
             <ActivityFeed />
           </>)}
           {section === 'memory' && <MemoryPanel />}
+          {section === 'logs' && <LogsPanel />}
           {['apps', 'files', 'workspace'].includes(section) && <PlaceholderPanel kind={section} />}
         </main>
       </div>

@@ -40,6 +40,9 @@ function seedState() {
       slackAppToken: '',
       slackEnabled: false,
       mobileToken: require('crypto').randomUUID(),
+      uiAccent: '#57d9ff',
+      uiDensity: 'comfortable',
+      uiAnimations: true,
     },
   }
 }
