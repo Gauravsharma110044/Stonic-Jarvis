@@ -7,6 +7,7 @@ const { getStore } = require('./store.cjs')
 const assistant = require('./assistant.cjs')
 const slack = require('./slack.cjs')
 const mobile = require('./mobile.cjs')
+const telegram = require('./telegram.cjs')
 
 const store = getStore()
 let win = null
@@ -85,6 +86,7 @@ app.whenReady().then(() => {
   createWindow()
   createTray()
   slack.start().then(r => { if (!r.ok && r.reason !== 'disabled or already running') console.warn('[slack]', r.reason) })
+  telegram.start().then(r => { if (!r.ok && r.reason !== 'disabled or already running') console.warn('[telegram]', r.reason) })
   mobile.start()
 
   ipcMain.handle('store:snapshot', () => store.snapshot())
@@ -104,9 +106,11 @@ app.whenReady().then(() => {
     store.state.settings = { ...store.state.settings, ...patch }
     store.save()
     slack.stop().then(() => slack.start())
+    telegram.stop().then(() => telegram.start())
     return store.state.settings
   })
   ipcMain.handle('slack:status', () => slack.status())
+  ipcMain.handle('telegram:status', () => telegram.status())
   ipcMain.handle('memory:get', () => assistant.getMemory())
   ipcMain.handle('jobs:list', () => assistant.getJobs())
   ipcMain.handle('jobs:cancel', (_e, id) => assistant.cancelJob(id))

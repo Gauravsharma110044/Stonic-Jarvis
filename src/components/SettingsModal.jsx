@@ -80,6 +80,31 @@ export default function SettingsModal({ settings, slackStatus, onClose, onSave }
           <div className="hint">Auto-update works in the installed app and needs a published update feed (latest.yml + installer on a static host or GitHub Releases).</div>
         </div>
 
+        <h3 style={{ fontSize: 13, margin: '16px 0 8px' }}>Telegram bot</h3>
+        <div className="toggle-row">
+          <div>
+            <div style={{ fontWeight: 600 }}>Enable Telegram</div>
+            <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>Jarvis replies to your messages on Telegram — remote control from phone.</div>
+          </div>
+          <label className="toggle">
+            <input type="checkbox" checked={!!form.telegramEnabled} onChange={e => set('telegramEnabled', e.target.checked)} />
+            <span className="slider" />
+          </label>
+        </div>
+        <div className="field">
+          <label>Bot Token</label>
+          <input type="password" value={form.telegramBotToken} onChange={e => set('telegramBotToken', e.target.value)}
+            placeholder="123456:ABC-DEF... (from @BotFather)" />
+          <div className="hint">Create via @BotFather → /newbot. Then message your bot on Telegram.</div>
+        </div>
+        <div className="field">
+          <label>Allowed user IDs (optional)</label>
+          <input type="text" value={form.telegramAllowedUsers} onChange={e => set('telegramAllowedUsers', e.target.value)}
+            placeholder="123456789,987654321 — comma separated" />
+          <div className="hint">Restrict who can command Jarvis. Empty = anyone who finds the bot.</div>
+        </div>
+        <TgStatus />
+
         <h3 style={{ fontSize: 13, margin: '16px 0 8px' }}>Appearance</h3>
         <div className="field">
           <label>Accent color</label>
@@ -187,6 +212,24 @@ export default function SettingsModal({ settings, slackStatus, onClose, onSave }
           <button className="btn btn-primary" onClick={save}>Save</button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function TgStatus() {
+  const [s, setS] = useState(null)
+  useEffect(() => {
+    const load = () => window.jarvis.telegramStatus?.().then(setS).catch(() => {})
+    load()
+    const t = setInterval(load, 5000)
+    return () => clearInterval(t)
+  }, [])
+  if (!s) return null
+  return (
+    <div style={{ marginTop: 8 }}>
+      <span className={`status-pill ${s.connected ? 'on' : 'off'}`}>
+        ● {s.connected ? 'Telegram connected' : s.enabled ? 'Configured — not connected' : 'Telegram disabled'}
+      </span>
     </div>
   )
 }
