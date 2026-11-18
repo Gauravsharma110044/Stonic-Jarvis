@@ -47,6 +47,7 @@
     "directories": {
       "output": "release"
     },
+    "artifactName": "Jarvis-Setup-${version}.${ext}",
     "win": {
       "target": "nsis",
       "icon": "electron/icon.ico"
