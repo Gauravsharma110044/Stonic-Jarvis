@@ -411,3 +411,38 @@ body.no-animations *, body.no-animations *::before, body.no-animations *::after 
 .log-ts { color: var(--text-faint); flex-shrink: 0; }
 .log-text { color: #9db8dd; word-break: break-all; }
 .logs-empty { color: var(--text-faint); text-align: center; padding: 40px 0; }
+
+/* ---- command palette ---- */
+.cp-backdrop { position: fixed; inset: 0; background: rgba(2,4,10,.6); backdrop-filter: blur(3px); z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding-top: 14vh; }
+.cp { width: 520px; max-width: 92vw; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.6), 0 0 30px rgba(87,217,255,.08); overflow: hidden; backdrop-filter: blur(14px); }
+.cp-input { width: 100%; background: none; border: none; border-bottom: 1px solid var(--border); color: var(--text); font-size: 15px; padding: 14px 18px; font-family: inherit; }
+.cp-input:focus { outline: none; }
+.cp-input::placeholder { color: var(--text-faint); }
+.cp-list { max-height: 320px; overflow-y: auto; padding: 6px; }
+.cp-item { display: flex; justify-content: space-between; align-items: center; width: 100%; background: none; border: none; color: var(--text); font-size: 13px; padding: 9px 12px; border-radius: 8px; cursor: pointer; font-family: inherit; text-align: left; }
+.cp-item.sel { background: rgba(87,217,255,.12); }
+.cp-hint { color: var(--text-faint); font-size: 11px; font-family: monospace; }
+.cp-empty { color: var(--text-faint); text-align: center; padding: 20px; font-size: 12px; }
+.cp-foot { border-top: 1px solid var(--border); padding: 7px 14px; font-size: 10px; color: var(--text-faint); letter-spacing: .5px; }
+
+/* ---- message actions ---- */
+.msg-body { position: relative; }
+.msg-actions { position: absolute; top: 0; right: 0; display: flex; gap: 4px; opacity: 0; transition: opacity .15s; }
+.msg-row:hover .msg-actions { opacity: 1; }
+.msg-actions button { background: rgba(13,22,40,.9); border: 1px solid var(--border); color: var(--text-dim); font-size: 11px; width: 24px; height: 24px; border-radius: 6px; cursor: pointer; line-height: 1; }
+.msg-actions button:hover { color: var(--cyan); border-color: var(--cyan); }
+
+/* ---- code blocks ---- */
+.code-block { position: relative; margin: 8px 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: rgba(4,7,13,.8); }
+.code-block pre { margin: 0; padding: 12px 14px; overflow-x: auto; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; line-height: 1.6; color: #c8e6ff; }
+.code-copy { position: absolute; top: 6px; right: 6px; background: rgba(13,22,40,.9); border: 1px solid var(--border); color: var(--text-dim); font-size: 10px; padding: 3px 10px; border-radius: 6px; cursor: pointer; font-family: inherit; z-index: 2; }
+.code-copy:hover { color: var(--cyan); border-color: var(--cyan); }
+
+/* ---- focus mode ---- */
+body.focus-mode .home-mid { display: none; }
+body.focus-mode .home-grid { grid-template-columns: 1fr; }
+body.focus-mode .home-right { border-left: none; }
+
+/* ---- message entrance animation ---- */
+.msg-row { animation: msgIn .25s ease-out; }
+@keyframes msgIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

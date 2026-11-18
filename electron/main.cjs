@@ -1,5 +1,5 @@
 require('./env.cjs')
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electron')
 const path = require('path')
 const os = require('os')
 const fs = require('fs')
@@ -64,9 +64,26 @@ function pushTyping(channelId) {
   if (win && !win.isDestroyed()) win.webContents.send('jarvis:typing', channelId)
 }
 
+let tray = null
+function createTray() {
+  try {
+    const iconPath = path.join(__dirname, 'icon.png')
+    const img = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 })
+    tray = new Tray(img)
+    tray.setToolTip('Jarvis')
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: 'Open Jarvis', click: () => { if (win) { win.show(); win.focus() } else createWindow() } },
+      { type: 'separator' },
+      { label: 'Quit', click: () => app.quit() },
+    ]))
+    tray.on('click', () => { if (win) { win.isVisible() ? win.hide() : (win.show(), win.focus()) } })
+  } catch (e) { console.warn('[tray]', e.message) }
+}
+
 app.whenReady().then(() => {
   app.setAppUserModelId('com.stonic.jarvis')
   createWindow()
+  createTray()
   slack.start().then(r => { if (!r.ok && r.reason !== 'disabled or already running') console.warn('[slack]', r.reason) })
   mobile.start()
 

@@ -9,6 +9,7 @@ import SettingsModal from './components/SettingsModal.jsx'
 import { MemoryPanel, PlaceholderPanel } from './components/Panels.jsx'
 import StatsPanel from './components/StatsPanel.jsx'
 import LogsPanel from './components/LogsPanel.jsx'
+import CommandPalette from './components/CommandPalette.jsx'
 import { renderText } from './utils.jsx'
 
 const CHANNEL_ID = 'd-jarvis'
@@ -17,6 +18,8 @@ export default function App() {
   const [state, setState] = useState(null)
   const [section, setSection] = useState('home')
   const [showSettings, setShowSettings] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [focusMode, setFocusMode] = useState(false)
   const [maximized, setMaximized] = useState(false)
   const [typing, setTyping] = useState(false)
   const [listening, setListening] = useState(false)
@@ -294,6 +297,8 @@ export default function App() {
         document.activeElement?.blur?.()
       } else if (e.key === ',' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault(); setShowSettings(true)
+      } else if (e.key.toLowerCase() === 'k' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault(); setPaletteOpen(o => !o)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -309,6 +314,22 @@ export default function App() {
     if (id === 'settings') setShowSettings(true)
     else setSection(id)
   }, [])
+
+  useEffect(() => {
+    document.body.classList.toggle('focus-mode', focusMode)
+  }, [focusMode])
+
+  const paletteActions = [
+    { label: 'Go to Home', hint: '⌂', run: () => onNav('home') },
+    { label: 'Go to Logs', hint: '≡', run: () => onNav('logs') },
+    { label: 'Go to Memory', hint: '◈', run: () => onNav('memory') },
+    { label: 'Go to Applications', hint: '▦', run: () => onNav('apps') },
+    { label: 'Go to Files', hint: '▤', run: () => onNav('files') },
+    { label: 'Go to Workspace', hint: '◈', run: () => onNav('workspace') },
+    { label: 'Open Settings', hint: 'Ctrl+,', run: () => setShowSettings(true) },
+    { label: focusMode ? 'Exit focus mode' : 'Focus mode (hide reactor)', hint: 'chat only', run: () => setFocusMode(f => !f) },
+    { label: 'Focus chat input', hint: '/', run: () => document.getElementById('composer-input')?.focus() },
+  ]
 
   if (!state) return <div className="boot" />
 
@@ -358,6 +379,10 @@ export default function App() {
                         {m.attachNames?.length > 0 && (
                           <div className="msg-attach">{m.attachNames.map(n => `📎 ${n}`).join('  ')}</div>
                         )}
+                        <div className="msg-actions">
+                          <button title="Copy" onClick={() => navigator.clipboard?.writeText(m.text).catch(() => {})}>⧉</button>
+                          {mine && <button title="Resend" onClick={() => send(m.text)}>↻</button>}
+                        </div>
                       </div>
                     </div>
                   )
@@ -406,6 +431,7 @@ export default function App() {
           onSave={saveSettings}
         />
       )}
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} actions={paletteActions} />
     </div>
   )
 }

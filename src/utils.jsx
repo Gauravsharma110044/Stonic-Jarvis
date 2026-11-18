@@ -1,8 +1,35 @@
 import React from 'react'
 
-// Minimal markdown: **bold**, `code`, newlines. Returns React nodes (safe).
+function CodeBlock({ code }) {
+  const [copied, setCopied] = React.useState(false)
+  return (
+    <div className="code-block">
+      <button className="code-copy" onClick={() => {
+        navigator.clipboard?.writeText(code).catch(() => {})
+        setCopied(true); setTimeout(() => setCopied(false), 1200)
+      }}>{copied ? 'Copied!' : 'Copy'}</button>
+      <pre><code>{code}</code></pre>
+    </div>
+  )
+}
+
+// Minimal markdown: **bold**, `code`, ```blocks```, newlines. Returns React nodes (safe).
 export function renderText(text) {
-  const lines = String(text).split('\n')
+  const src = String(text)
+  const parts = []
+  const fenceRe = /```(\w*)\n?([\s\S]*?)(?:```|$)/g
+  let last = 0, m, k = 0
+  while ((m = fenceRe.exec(src))) {
+    if (m.index > last) parts.push(<React.Fragment key={k++}>{renderLines(src.slice(last, m.index))}</React.Fragment>)
+    parts.push(<CodeBlock key={k++} code={m[2].replace(/\n$/, '')} />)
+    last = m.index + m[0].length
+  }
+  if (last < src.length) parts.push(<React.Fragment key={k++}>{renderLines(src.slice(last))}</React.Fragment>)
+  return <>{parts}</>
+}
+
+function renderLines(text) {
+  const lines = text.split('\n')
   return lines.map((line, i) => (
     <React.Fragment key={i}>
       {renderInline(line)}
