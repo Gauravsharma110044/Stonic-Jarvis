@@ -351,8 +351,13 @@ export default function App() {
           {section === 'home' && (<>
             <div className="home-grid">
               <section className="home-mid">
-                <JarvisCore state={coreState} analyser={analyser} size={130} />
+                <JarvisCore state={coreState} analyser={analyser} size={150} />
                 <div className="home-mid-sub">{coreState === 'idle' ? 'How can I assist you today?' : coreState}</div>
+                <div className="suggest-chips">
+                  {['Open my browser', 'System stats', 'Set a reminder', 'What can you do?'].map(s => (
+                    <button key={s} className="suggest-chip" onClick={() => send(s)}>{s}</button>
+                  ))}
+                </div>
               </section>
               <section className="home-right">
                 <div className="chat-scroll">
