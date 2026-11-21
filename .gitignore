@@ -11,3 +11,4 @@ mobile-app/android-sdk/
 website/node_modules/
 *.apk
 *.aab
+vendor/
